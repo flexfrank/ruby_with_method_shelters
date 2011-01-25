@@ -373,7 +373,6 @@ struct rb_unblock_callback {
 };
 
 struct rb_mutex_struct;
-
 typedef struct rb_thread_struct
 {
     VALUE self;
@@ -480,6 +479,9 @@ typedef struct rb_thread_struct
 #ifdef USE_SIGALTSTACK
     void *altstack;
 #endif
+    /* methodpack */
+    VALUE methodpack_stack;
+    VALUE methodpack_visibility_stack;
 } rb_thread_t;
 
 /* iseq.c */
