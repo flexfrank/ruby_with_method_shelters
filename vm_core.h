@@ -481,7 +481,6 @@ typedef struct rb_thread_struct
 #endif
     /* methodpack */
     VALUE methodpack_stack;
-    VALUE methodpack_visibility_stack;
 } rb_thread_t;
 
 /* iseq.c */

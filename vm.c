@@ -1678,7 +1678,6 @@ rb_thread_mark(void *ptr)
 	RUBY_MARK_UNLESS_NULL(th->locking_mutex);
 
   RUBY_MARK_UNLESS_NULL(th->methodpack_stack);
-  RUBY_MARK_UNLESS_NULL(th->methodpack_visibility_stack);
 
 	rb_mark_tbl(th->local_storage);
 

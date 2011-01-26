@@ -10,6 +10,7 @@ typedef struct methodpack_struct{
   VALUE name;
   VALUE exposed_imports;
   VALUE hidden_imports;
+  int hidden;
 } methodpack_t;
 
 static void 
@@ -34,6 +35,7 @@ methodpack_alloc(VALUE klass,VALUE name){
   mpack->name=name;
   mpack->exposed_imports=rb_ary_tmp_new(0);
   mpack->hidden_imports=rb_ary_tmp_new(0);
+  mpack->hidden=0;
   return Data_Wrap_Struct(klass,methodpack_mark,methodpack_free, mpack);
 }
 
@@ -85,15 +87,9 @@ define_methodpack(VALUE self,VALUE name){
   if(!th->methodpack_stack){
     th->methodpack_stack=rb_ary_tmp_new(1);
   }
-  if(!th->methodpack_visibility_stack){
-    th->methodpack_visibility_stack=rb_ary_tmp_new(1);
-  }
   rb_ary_push(th->methodpack_stack,methodpack);
-  rb_ary_push(th->methodpack_visibility_stack,Qtrue);;
-  VALUE mp=ARRAY_LAST(th->methodpack_stack);
   VALUE val= rb_yield(methodpack); 
   rb_ary_pop(th->methodpack_stack);
-  rb_ary_pop(th->methodpack_visibility_stack);
   return val;
 }
 
@@ -120,29 +116,31 @@ import_methodpack(VALUE self,VALUE import_sym){
   VALUE importpack=get_methodpack(import_sym);
   rb_thread_t *th = GET_THREAD();
   /* exposed */
-  if(RTEST(ARRAY_LAST(th->methodpack_visibility_stack))){
-    if(current && !rb_ary_includes(current->exposed_imports,importpack)){
-      rb_ary_push(current->exposed_imports,importpack);
-    }
-  }else{
-    if(current && !rb_ary_includes(current->hidden_imports,importpack)){
-      rb_ary_push(current->hidden_imports,importpack);
+  if(current){
+    if(current->hidden){
+      if(current && !rb_ary_includes(current->hidden_imports,importpack)){
+        rb_ary_push(current->hidden_imports,importpack);
+      }
+    }else{
+      if(current && !rb_ary_includes(current->exposed_imports,importpack)){
+        rb_ary_push(current->exposed_imports,importpack);
+      }
     }
   }
   return Qnil;
 }
 
 static VALUE
-methodpack_enable_hidden(VALUE self){
-  rb_thread_t *th = GET_THREAD();
-  if(th->methodpack_visibility_stack){
-    VALUE result;
-    rb_ary_push(th->methodpack_visibility_stack,Qfalse);
-    result=rb_yield_values2(0,NULL);
-    rb_ary_pop(th->methodpack_visibility_stack);
-  }else{
-    rb_raise(rb_eScriptError,"you should call this method inside a methodpack");
-  }
+hide_methodpack(VALUE self){
+  methodpack_t* current = current_methodpack();
+  current->hidden=TRUE;
+  return Qnil;
+}
+static VALUE
+expose_methodpack(VALUE self){
+  methodpack_t* current = current_methodpack();
+  current->hidden=FALSE;
+  return Qnil;
 }
 
 static VALUE
@@ -160,12 +158,45 @@ methodpack_to_s(VALUE self){
   }
   return result;
 }
+static VALUE
+methodpack_children_string(VALUE ary){
+  VALUE result=rb_str_new2("[");
+  long i;
+  for(i=0;i<RARRAY_LEN(ary);i++){
+    if(i>0){
+      rb_str_cat2(result,",");
+    }
+    rb_str_concat(result,methodpack_to_s(RARRAY_PTR(ary)[i]));
+  }
+  rb_str_cat2(result,"]");
+  return result;
+}
 
+static VALUE
+methodpack_inspect(VALUE self){
+  methodpack_t* mpack;
+  Data_Get_Struct(self,methodpack_t, mpack);
+  VALUE result;
+  result=rb_str_new2("");
+  rb_str_cat2(result, "#<Methodpack:");
+  if(RTEST(mpack->name)){
+    rb_str_concat(result, rb_sym_to_s(mpack->name));
+  }
+  rb_str_cat2(result," exposed=");
+  rb_str_concat(result, methodpack_children_string(mpack->exposed_imports));
+  rb_str_cat2(result," hidden=");
+  rb_str_concat(result, methodpack_children_string(mpack->hidden_imports));
+  rb_str_cat2(result,">");
+  return result;
+  
+}
 void Init_Methodpack(void){
   rb_define_singleton_method(rb_vm_top_self(),"methodpack", define_methodpack, 1);
   rb_define_singleton_method(rb_vm_top_self(),"import", import_methodpack, 1);
-  rb_define_singleton_method(rb_vm_top_self(),"hidden", methodpack_enable_hidden, 0);
+  rb_define_singleton_method(rb_vm_top_self(),"hide", hide_methodpack, 0);
+  rb_define_singleton_method(rb_vm_top_self(),"expose", expose_methodpack, 0);
   rb_cMethodpack = rb_define_class("Methodpack", rb_cObject);
   rb_define_method(rb_cMethodpack,"to_s",methodpack_to_s,0);
+  rb_define_method(rb_cMethodpack,"inspect",methodpack_inspect,0);
   rb_undef_alloc_func(rb_cMethodpack);
 }
