@@ -83,7 +83,7 @@ COMMONOBJS    = array.$(OBJEXT) \
 		vm_dump.$(OBJEXT) \
 		thread.$(OBJEXT) \
 		cont.$(OBJEXT) \
-		methodpack.$(OBJEXT) \
+		shelter.$(OBJEXT) \
 		$(BUILTIN_ENCOBJS) \
 		$(BUILTIN_TRANSOBJS) \
 		$(MISSING)

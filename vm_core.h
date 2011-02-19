@@ -329,6 +329,7 @@ typedef struct {
     VALUE *dfp;			/* cfp[7] / block[2] */
     rb_iseq_t *block_iseq;	/* cfp[8] / block[3] */
     VALUE proc;			/* cfp[9] / block[4] */
+    void* shelter_node;
     const rb_method_entry_t *me;/* cfp[10] */
 } rb_control_frame_t;
 
@@ -338,6 +339,7 @@ typedef struct rb_block_struct {
     VALUE *dfp;			/* share with method frame if it's only block */
     rb_iseq_t *iseq;
     VALUE proc;
+    void* shelter_node;
 } rb_block_t;
 
 #define GetThreadPtr(obj, ptr) \
@@ -480,7 +482,7 @@ typedef struct rb_thread_struct
     void *altstack;
 #endif
     /* methodpack */
-    VALUE methodpack_stack;
+    VALUE shelter_stack;
 } rb_thread_t;
 
 /* iseq.c */
