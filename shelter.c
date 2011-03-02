@@ -8,10 +8,20 @@ VALUE rb_cShelter;
 
 typedef struct shelter_struct{
   VALUE name;
+  int hidden;
   VALUE exposed_imports;
   VALUE hidden_imports;
-  int hidden;
+  VALUE method_table_keys;
+  st_table *exposed_method_table;
+  st_table *hidden_method_table;
 } shelter_t;
+
+typedef struct shelter_node_struct{
+  shelter_t* shelter;
+  struct shelter_node_struct* exposed_imports;
+  struct shelter_node_struct* hidden_imports;
+  struct shelter_node_struct* parent;
+} shelter_node_t;
 
 static void 
 shelter_mark(void* shelter){
@@ -19,15 +29,37 @@ shelter_mark(void* shelter){
   rb_gc_mark(s->name);
   rb_gc_mark(s->exposed_imports);
   rb_gc_mark(s->hidden_imports);
+  rb_gc_mark(s->method_table_keys);
 }
 static void 
 shelter_free(void* shelter){
   shelter_t* s=shelter;
-  s->name=Qnil;
-  s->exposed_imports=Qnil;
-  s->hidden_imports=Qnil;
+  st_free_table(s->exposed_method_table);
+  st_free_table(s->hidden_method_table);
   free(shelter);
 }
+
+static int
+shelter_method_cmp(st_data_t x, st_data_t y) {
+    VALUE *key1=(VALUE*)x;
+    VALUE *key2=(VALUE*)y;
+    return key1[0]==key2[0] && key1[1]==key2[1];
+}
+
+st_index_t
+shelter_method_hash(st_data_t n)
+{
+    VALUE *key=(VALUE*)n;
+    return (st_index_t)key[0]+key[1]>>2;
+}
+
+
+static const struct st_hash_type type_shelter_method_hash = {
+    shelter_method_cmp,
+    shelter_method_hash,
+};
+
+
 static VALUE 
 shelter_alloc(VALUE klass,VALUE name){
   Check_Type(name,T_SYMBOL);
@@ -35,6 +67,9 @@ shelter_alloc(VALUE klass,VALUE name){
   s->name=name;
   s->exposed_imports=rb_ary_tmp_new(0);
   s->hidden_imports=rb_ary_tmp_new(0);
+  s->method_table_keys=rb_ary_tmp_new(0);
+  s->exposed_method_table=st_init_table(&type_shelter_method_hash);
+  s->hidden_method_table=st_init_table(&type_shelter_method_hash);
   s->hidden=0;
   return Data_Wrap_Struct(klass,shelter_mark,shelter_free, s);
 }
@@ -89,6 +124,7 @@ define_shelter(VALUE self,VALUE name){
   return val;
 }
 
+
 static inline shelter_t*
 current_shelter(){
   rb_thread_t* th=GET_THREAD();
@@ -104,6 +140,24 @@ current_shelter(){
   }
   return NULL;
 }
+
+rb_method_entry_t*
+method_entry_in_shelter(VALUE klass,ID mid){
+  shelter_t* shelter = current_shelter();
+  VALUE method_sym=ID2SYM(mid);
+  if(shelter){
+    if(shelter->hidden){
+      printf("hidden\n");
+    }else{
+      printf("exposed\n");
+    }
+    rb_p(klass);
+    rb_p(method_sym);
+    printf("define method\n");
+  }
+  return NULL;
+}
+
 
 static VALUE
 import_shelter(VALUE self,VALUE import_sym){
