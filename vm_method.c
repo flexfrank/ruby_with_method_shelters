@@ -182,7 +182,6 @@ rb_free_method_entry(rb_method_entry_t *me)
 }
 
 static int rb_method_definition_eq(const rb_method_definition_t *d1, const rb_method_definition_t *d2);
-rb_method_entry_t* method_entry_in_shelter();
 static rb_method_entry_t *
 rb_method_entry_make(VALUE klass, ID mid, rb_method_type_t type,
 		     rb_method_definition_t *def, rb_method_flag_t noex)
@@ -190,7 +189,7 @@ rb_method_entry_make(VALUE klass, ID mid, rb_method_type_t type,
     rb_method_entry_t *me;
     st_table *mtbl;
     st_data_t data;
-    method_entry_in_shelter();
+    
 
     if (NIL_P(klass)) {
 	klass = rb_cObject;
@@ -302,14 +301,18 @@ method_added(VALUE klass, ID mid)
     }
 }
 
+ID shelter_convert_method_name(VALUE klass,ID methodname);
 rb_method_entry_t *
 rb_add_method(VALUE klass, ID mid, rb_method_type_t type, void *opts, rb_method_flag_t noex)
 {
     rb_thread_t *th;
     rb_control_frame_t *cfp;
     int line;
-    rb_method_entry_t *me = rb_method_entry_make(klass, mid, type, 0, noex);
-    rb_method_definition_t *def = ALLOC(rb_method_definition_t);
+    rb_method_entry_t *me;
+    rb_method_definition_t *def;
+    mid=shelter_convert_method_name(klass,mid);
+    me= rb_method_entry_make(klass, mid, type, 0, noex);
+    def= ALLOC(rb_method_definition_t);
     me->def = def;
     def->type = type;
     def->original_id = mid;

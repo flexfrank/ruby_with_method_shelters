@@ -4,6 +4,7 @@
 #include "eval_intern.h"
 #define ARRAY_LAST(ary) (RARRAY_PTR(ary)[RARRAY_LEN(ary)-1])
 
+
 VALUE rb_cShelter;
 
 typedef struct shelter_struct{
@@ -11,10 +12,11 @@ typedef struct shelter_struct{
   int hidden;
   VALUE exposed_imports;
   VALUE hidden_imports;
-  VALUE method_table_keys;
-  st_table *exposed_method_table;
-  st_table *hidden_method_table;
+  st_table *exposed_method_table; /*klass->symbol->symbol*/
+  st_table *hidden_method_table;  /*klass->symbol->symbol*/
 } shelter_t;
+
+static inline shelter_t* current_shelter();
 
 typedef struct shelter_node_struct{
   shelter_t* shelter;
@@ -23,42 +25,82 @@ typedef struct shelter_node_struct{
   struct shelter_node_struct* parent;
 } shelter_node_t;
 
+static int
+method_table_mark_entries(st_data_t key, st_data_t val, st_data_t arg){
+  rb_gc_mark((VALUE)key);/*symbol*/
+  rb_gc_mark((VALUE)val);/*symbol*/
+  return ST_CONTINUE;
+}
+
+static int
+method_table_mark(st_data_t key, st_data_t val, st_data_t arg){
+  rb_gc_mark((VALUE)key);/*klass*/
+  st_foreach((st_table*)val,method_table_mark_entries,0);
+  return ST_CONTINUE;
+}
+
 static void 
 shelter_mark(void* shelter){
   shelter_t* s=shelter;
   rb_gc_mark(s->name);
   rb_gc_mark(s->exposed_imports);
   rb_gc_mark(s->hidden_imports);
-  rb_gc_mark(s->method_table_keys);
+  st_foreach(s->exposed_method_table,method_table_mark,0);
+  st_foreach(s->hidden_method_table,method_table_mark,0);
+
 }
+
+static int
+method_shelter_table_free(st_data_t key,st_data_t val,st_data_t arg){
+  st_table_free((st_table*)val);
+  return ST_CONTINUE;
+}
+
 static void 
 shelter_free(void* shelter){
   shelter_t* s=shelter;
+  st_foreach(s->exposed_method_table,method_table_mark,0);
+  st_foreach(s->hidden_method_table,method_table_mark,0);
   st_free_table(s->exposed_method_table);
   st_free_table(s->hidden_method_table);
   free(shelter);
 }
 
-static int
-shelter_method_cmp(st_data_t x, st_data_t y) {
-    VALUE *key1=(VALUE*)x;
-    VALUE *key2=(VALUE*)y;
-    return key1[0]==key2[0] && key1[1]==key2[1];
+
+
+ID
+shelter_convert_method_name(VALUE klass,ID methodname){
+  shelter_t* s=current_shelter();
+  if(s){
+    st_table* conv_name_tbl;
+    st_table* mtbl;
+    VALUE newname_sym;
+    VALUE newname=rb_str_new_cstr("shelter#");
+    rb_str_concat(newname,rb_sprintf("%p#",s));
+    rb_str_concat(newname,rb_id2str(methodname));
+    newname_sym=rb_str_intern(newname);
+    rb_p(newname);
+
+    if(s->hidden){
+      mtbl=s->hidden_method_table;
+    }else{
+      mtbl=s->exposed_method_table;
+    }
+
+
+    if(!st_lookup(mtbl,klass,(st_data_t*)&conv_name_tbl)){
+      conv_name_tbl=st_init_numtable();
+      st_insert(mtbl,klass,(st_data_t)conv_name_tbl);
+    }
+
+    st_insert(conv_name_tbl,ID2SYM(methodname),newname_sym);
+   
+
+    return SYM2ID(newname_sym);
+  }else{
+    return methodname;
+  }
 }
-
-st_index_t
-shelter_method_hash(st_data_t n)
-{
-    VALUE *key=(VALUE*)n;
-    return (st_index_t)key[0]+key[1]>>2;
-}
-
-
-static const struct st_hash_type type_shelter_method_hash = {
-    shelter_method_cmp,
-    shelter_method_hash,
-};
-
 
 static VALUE 
 shelter_alloc(VALUE klass,VALUE name){
@@ -67,9 +109,8 @@ shelter_alloc(VALUE klass,VALUE name){
   s->name=name;
   s->exposed_imports=rb_ary_tmp_new(0);
   s->hidden_imports=rb_ary_tmp_new(0);
-  s->method_table_keys=rb_ary_tmp_new(0);
-  s->exposed_method_table=st_init_table(&type_shelter_method_hash);
-  s->hidden_method_table=st_init_table(&type_shelter_method_hash);
+  s->exposed_method_table=st_init_numtable();
+  s->hidden_method_table=st_init_numtable();
   s->hidden=0;
   return Data_Wrap_Struct(klass,shelter_mark,shelter_free, s);
 }
@@ -132,10 +173,13 @@ current_shelter(){
     long len=RARRAY_LEN(th->shelter_stack);
     if(len>0){
       VALUE last=ARRAY_LAST(th->shelter_stack);
-      shelter_t* mp;
-      Data_Get_Struct(last, shelter_t, mp);
-
-      return mp;
+      if(RTEST(last)){
+        shelter_t* mp;
+        Data_Get_Struct(last, shelter_t, mp);
+        return mp;
+      }else{
+        return NULL;
+      }
     }
   }
   return NULL;
