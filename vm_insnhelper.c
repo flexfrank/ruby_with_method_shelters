@@ -10,6 +10,7 @@
 
 /* finish iseq array */
 #include "insns.inc"
+#include "shelter.h"
 #include <math.h>
 
 /* control stack frame */
@@ -1333,6 +1334,12 @@ static inline const rb_method_entry_t *
 vm_method_search(VALUE id, VALUE klass, IC ic)
 {
     rb_method_entry_t *me;
+    VALUE search_id;
+    if(is_in_shelter()){
+        search_id=search_shelter_method_name(id,klass);
+    }else{
+        search_id=id;
+    }
 #if OPT_INLINE_METHOD_CACHE
     if (LIKELY(klass == ic->ic_class) &&
 	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {

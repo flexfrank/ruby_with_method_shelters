@@ -19,11 +19,51 @@ typedef struct shelter_struct{
 static inline shelter_t* current_shelter();
 
 typedef struct shelter_node_struct{
-  shelter_t* shelter;
-  struct shelter_node_struct* exposed_imports;
-  struct shelter_node_struct* hidden_imports;
-  struct shelter_node_struct* parent;
+    shelter_t* shelter;
+    struct shelter_node_struct** exposed_imports;
+    long exposed_num;
+    struct shelter_node_struct** hidden_imports;
+    long hidden_num;
+    struct shelter_node_struct* parent;
 } shelter_node_t;
+
+
+static shelter_node_t*
+make_shelter_node(
+        shelter_t* shelter, 
+        shelter_node_t** exposed_imports, int exposed_num,
+        shelter_node_t** hidden_imports, int hidden_num
+){
+    long i;
+    shelter_node_t* node=malloc(sizeof(shelter_node_t));
+    node->shelter=shelter;
+    node->exposed_imports=malloc(sizeof(shelter_node_t*)*exposed_num);
+    for(i=0; i < exposed_num;i++){
+        node->exposed_imports[i]=exposed_imports[i];
+    }
+    node->exposed_num=exposed_num;
+    node->hidden_imports=malloc(sizeof(shelter_node_t*)*hidden_num);
+    for(i=0;i < hidden_num;i++){
+        node->hidden_imports[i]=hidden_imports[i];
+    }
+    node->hidden_num=hidden_num;
+    node->parent=NULL;
+}
+
+static void
+free_shelter_node(shelter_node_t* node){
+    long i;
+    for(i=0;i < node->exposed_num;i++){
+        free_shelter_node(node->exposed_imports[i]);
+    }
+    free(node->exposed_imports);
+    for(i=0;i < node->hidden_num;i++){
+        free_shelter_node(node->hidden_imports[i]);
+    }
+    free(node->hidden_imports);
+    free(node);
+}
+
 
 static int
 method_table_mark_entries(st_data_t key, st_data_t val, st_data_t arg){
@@ -185,6 +225,11 @@ current_shelter(){
   return NULL;
 }
 
+int
+is_in_shelter(){
+    return current_shelter != NULL;
+}
+
 rb_method_entry_t*
 method_entry_in_shelter(VALUE klass,ID mid){
   shelter_t* shelter = current_shelter();
@@ -284,6 +329,13 @@ shelter_inspect(VALUE self){
   return result;
   
 }
+
+VALUE
+search_shelter_method_name(VALUE id, VALUE klass){
+    //rb_p(id);
+    return id;
+}
+
 void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"shelter", define_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"import", import_shelter, 1);

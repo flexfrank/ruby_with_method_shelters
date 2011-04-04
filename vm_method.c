@@ -1,7 +1,7 @@
 /*
  * This file is included by vm.h
  */
-
+#include "shelter.h"
 #define CACHE_SIZE 0x800
 #define CACHE_MASK 0x7ff
 #define EXPR1(c,m) ((((c)>>3)^(m))&CACHE_MASK)
@@ -301,7 +301,6 @@ method_added(VALUE klass, ID mid)
     }
 }
 
-ID shelter_convert_method_name(VALUE klass,ID methodname);
 rb_method_entry_t *
 rb_add_method(VALUE klass, ID mid, rb_method_type_t type, void *opts, rb_method_flag_t noex)
 {
