@@ -442,7 +442,7 @@ dump_shelter_tree(shelter_node_t* node,int depth){
     }
     name=rb_sym_to_s(node->shelter->name);
     print_indent(depth);
-    printf("%s(%s)%p[\n",RSTRING_PTR(name),type,node);
+    printf("%s(%s)%p<%p[\n",RSTRING_PTR(name),type,node,node->parent);
     for(i=0;i<node->exposed_num;i++){
         dump_shelter_tree(node->exposed_imports[i],depth+1);
     }
