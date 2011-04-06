@@ -6,6 +6,7 @@
 
 
 VALUE rb_cShelter;
+VALUE rb_cShelterNode;
 
 typedef struct shelter_struct{
   VALUE name;
@@ -18,6 +19,12 @@ typedef struct shelter_struct{
 
 static inline shelter_t* current_shelter();
 
+typedef enum{
+    SHELTER_IMPORT_ROOT,
+    SHELTER_IMPORT_EXPOSED,
+    SHELTER_IMPORT_HIDDEN
+} SHELTER_IMPORT_TYPE;
+
 typedef struct shelter_node_struct{
     shelter_t* shelter;
     struct shelter_node_struct** exposed_imports;
@@ -25,14 +32,18 @@ typedef struct shelter_node_struct{
     struct shelter_node_struct** hidden_imports;
     long hidden_num;
     struct shelter_node_struct* parent;
+    SHELTER_IMPORT_TYPE import_type;
 } shelter_node_t;
+
+
 
 
 static shelter_node_t*
 make_shelter_node(
         shelter_t* shelter, 
-        shelter_node_t** exposed_imports, int exposed_num,
-        shelter_node_t** hidden_imports, int hidden_num
+        shelter_node_t** exposed_imports, long exposed_num,
+        shelter_node_t** hidden_imports, long hidden_num,
+        SHELTER_IMPORT_TYPE type
 ){
     long i;
     shelter_node_t* node=malloc(sizeof(shelter_node_t));
@@ -48,6 +59,21 @@ make_shelter_node(
     }
     node->hidden_num=hidden_num;
     node->parent=NULL;
+    node->import_type=type;
+}
+
+static void shelter_mark(void*);
+static void
+mark_shelter_node(shelter_node_t* node){
+    long i;
+    shelter_mark(node->shelter);
+    for(i=0;i < node->exposed_num;i++){
+        mark_shelter_node(node->exposed_imports[i]);
+    }
+    free(node->exposed_imports);
+    for(i=0;i < node->hidden_num;i++){
+        mark_shelter_node(node->hidden_imports[i]);
+    }
 }
 
 static void
@@ -64,6 +90,15 @@ free_shelter_node(shelter_node_t* node){
     free(node);
 }
 
+static void
+shelter_node_mark(void* node){
+    mark_shelter_node((shelter_node_t*)node);
+}
+
+static void
+shelter_node_free(void* node){
+    free_shelter_node((shelter_node_t*)node);
+}
 
 static int
 method_table_mark_entries(st_data_t key, st_data_t val, st_data_t arg){
@@ -336,12 +371,113 @@ search_shelter_method_name(VALUE id, VALUE klass){
     return id;
 }
 
+enum {
+    SHELTER_NODE_MAX_DEPTH=256
+} shelter_node_max_depth;
+static shelter_node_t*
+make_shelter_tree(shelter_t* shelter,long depth,SHELTER_IMPORT_TYPE type){
+    if(depth>SHELTER_NODE_MAX_DEPTH){
+        rb_raise(rb_eRuntimeError,"depth of shelter is too large");
+    }
+    VALUE *ex,*hi;
+    long ex_len,hi_len;
+    shelter_node_t **ex_nodes,**hi_nodes;
+    int i;
+    shelter_node_t* result;
+
+
+
+    ex=RARRAY_PTR(shelter->exposed_imports);
+    ex_len=RARRAY_LEN(shelter->exposed_imports);
+    hi=RARRAY_PTR(shelter->hidden_imports);
+    hi_len=RARRAY_LEN(shelter->hidden_imports);
+
+    ex_nodes=malloc(sizeof(shelter_node_t*)*ex_len);
+    for(i=0;i<ex_len;i++){
+        shelter_t* sh;
+        Data_Get_Struct(ex[i],shelter_t,sh);
+        ex_nodes[i]=make_shelter_tree(sh,depth+1,SHELTER_IMPORT_EXPOSED);    
+    }
+    
+
+    hi_nodes=malloc(sizeof(shelter_node_t*)*hi_len);
+    for(i=0;i<hi_len;i++){
+        shelter_t* sh;
+        Data_Get_Struct(hi[i],shelter_t,sh);
+        hi_nodes[i]=make_shelter_tree(sh,depth+1,SHELTER_IMPORT_HIDDEN);
+    }
+
+    result=make_shelter_node(shelter,ex_nodes,ex_len,hi_nodes,hi_len,type);
+
+
+    free(ex_nodes);
+    free(hi_nodes);
+
+    for(i=0; i < result->exposed_num; i++){
+        result->exposed_imports[i]->parent=result;
+    }
+    for(i=0; i < result->hidden_num; i++){
+        result->hidden_imports[i]->parent=result;
+    }
+    return result;
+}
+
+static void
+print_indent(int depth){
+    int i;
+    for(i=0;i<depth;i++){
+        printf("  ");
+    }
+}
+
+static void
+dump_shelter_tree(shelter_node_t* node,int depth){
+    VALUE name;
+    long i;
+    const char* type="";
+    switch(node->import_type){
+    case SHELTER_IMPORT_ROOT: type="root";break;
+    case SHELTER_IMPORT_EXPOSED: type="exposed";break;
+    case SHELTER_IMPORT_HIDDEN: type="hidden";break;
+    }
+    name=rb_sym_to_s(node->shelter->name);
+    print_indent(depth);
+    printf("%s(%s)%p[\n",RSTRING_PTR(name),type,node);
+    for(i=0;i<node->exposed_num;i++){
+        dump_shelter_tree(node->exposed_imports[i],depth+1);
+    }
+    for(i=0;i<node->hidden_num;i++){
+        dump_shelter_tree(node->hidden_imports[i],depth+1);
+    }
+    print_indent(depth);
+    printf("]\n");
+
+}
+
+
+VALUE
+shelter_eval(VALUE self, VALUE shelter_symbol){
+    VALUE shelter_val=get_shelter(shelter_symbol);  
+    shelter_t* shelter;
+    rb_thread_t* th=GET_THREAD();
+    shelter_node_t* node;
+    VALUE node_val;
+
+    Data_Get_Struct(shelter_val,shelter_t, shelter);
+    node= make_shelter_tree(shelter,0,SHELTER_IMPORT_ROOT);
+
+    dump_shelter_tree(node,0);
+    return Qnil;
+}
+
 void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"shelter", define_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"import", import_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"hide", hide_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"expose", expose_shelter, 0);
+  rb_define_singleton_method(rb_vm_top_self(),"shelter_eval", shelter_eval, 1);
   rb_cShelter = rb_define_class("Shelter", rb_cObject);
+  rb_cShelterNode = rb_define_class_under(rb_cShelter,"ShelterNode", rb_cObject);
   rb_define_method(rb_cShelter,"to_s",shelter_to_s,0);
   rb_define_method(rb_cShelter,"inspect",shelter_inspect,0);
   rb_undef_alloc_func(rb_cShelter);
