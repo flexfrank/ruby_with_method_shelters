@@ -516,10 +516,11 @@ rb_vm_make_proc(rb_thread_t *th, const rb_block_t *block, VALUE klass)
 
 /* C -> Ruby: block */
 
+
 static inline VALUE
-invoke_block_from_c(rb_thread_t *th, const rb_block_t *block,
+invoke_block_from_c_with_shelter_node(rb_thread_t *th, const rb_block_t *block,
 		    VALUE self, int argc, const VALUE *argv,
-		    const rb_block_t *blockptr, const NODE *cref)
+		    const rb_block_t *blockptr, const NODE *cref,void* shelter_node)
 {
     if (SPECIAL_CONST_P(block->iseq))
 	return Qnil;
@@ -530,6 +531,9 @@ invoke_block_from_c(rb_thread_t *th, const rb_block_t *block,
 	int i, opt_pc, arg_size = iseq->arg_size;
 	int type = block_proc_is_lambda(block->proc) ?
 	  VM_FRAME_MAGIC_LAMBDA : VM_FRAME_MAGIC_BLOCK;
+
+
+        void* next_shelter_node;
 
 	rb_vm_set_finish_env(th);
 
@@ -542,12 +546,14 @@ invoke_block_from_c(rb_thread_t *th, const rb_block_t *block,
 
 	opt_pc = vm_yield_setup_args(th, iseq, argc, cfp->sp, blockptr,
 				     type == VM_FRAME_MAGIC_LAMBDA);
+        /*pass shelter*/
 
-	ncfp = vm_push_frame(th, iseq, type,
+	ncfp = vm_push_frame_with_shelter_node(th, iseq, type,
 			     self, GC_GUARDED_PTR(block->dfp),
 			     iseq->iseq_encoded + opt_pc, cfp->sp + arg_size, block->lfp,
-			     iseq->local_size - arg_size);
+			     iseq->local_size - arg_size,shelter_node);
 	ncfp->me = th->passed_me;
+
 	th->passed_me = 0;
 	th->passed_block = blockptr;
 
@@ -560,6 +566,14 @@ invoke_block_from_c(rb_thread_t *th, const rb_block_t *block,
     else {
 	return vm_yield_with_cfunc(th, block, self, argc, argv, blockptr);
     }
+}
+
+static inline VALUE
+invoke_block_from_c(rb_thread_t *th, const rb_block_t *block,
+		    VALUE self, int argc, const VALUE *argv,
+		    const rb_block_t *blockptr, const NODE *cref)
+{
+    return invoke_block_from_c_with_shelter_node(th,block,self,argc,argv,blockptr,cref,NULL);
 }
 
 static inline const rb_block_t *
@@ -586,6 +600,13 @@ vm_yield(rb_thread_t *th, int argc, const VALUE *argv)
 {
     const rb_block_t *blockptr = check_block(th);
     return invoke_block_from_c(th, blockptr, blockptr->self, argc, argv, 0, 0);
+}
+
+static inline VALUE
+vm_yield_with_shelter_node(rb_thread_t *th, int argc, const VALUE *argv,void* shelter_node)
+{
+    const rb_block_t *blockptr = check_block(th);
+    return invoke_block_from_c_with_shelter_node(th, blockptr, blockptr->self, argc, argv, 0, 0,shelter_node);
 }
 
 VALUE

@@ -21,14 +21,23 @@
 
 static rb_control_frame_t *vm_get_ruby_level_caller_cfp(rb_thread_t *th, rb_control_frame_t *cfp);
 
+/*static inline rb_control_frame_t *
+vm_push_frame_with_shelter_node(rb_thread_t * th, const rb_iseq_t * iseq,
+	      VALUE type, VALUE self, VALUE specval,
+	      const VALUE *pc, VALUE *sp, VALUE *lfp,
+	      int local_size,void* shelter_node)
+{*/
 static inline rb_control_frame_t *
 vm_push_frame(rb_thread_t * th, const rb_iseq_t * iseq,
 	      VALUE type, VALUE self, VALUE specval,
 	      const VALUE *pc, VALUE *sp, VALUE *lfp,
 	      int local_size)
 {
+
+
     rb_control_frame_t * const cfp = th->cfp - 1;
     int i;
+    rb_control_frame_t* const prevcfp = th->cfp;
 
     if ((void *)(sp + local_size) >= (void *)cfp) {
 	rb_exc_raise(sysstack_error);
@@ -63,6 +72,13 @@ vm_push_frame(rb_thread_t * th, const rb_iseq_t * iseq,
     cfp->proc = 0;
     cfp->me = 0;
 
+    if(type==VM_FRAME_MAGIC_TOP){
+        cfp->shelter_node=0;
+    }else{
+        cfp->shelter_node=prevcfp->shelter_node;
+    }
+
+
 #define COLLECT_PROFILE 0
 #if COLLECT_PROFILE
     cfp->prof_time_self = clock();
@@ -76,6 +92,18 @@ vm_push_frame(rb_thread_t * th, const rb_iseq_t * iseq,
     return cfp;
 }
 
+static inline rb_control_frame_t *
+vm_push_frame_with_shelter_node(rb_thread_t * th, const rb_iseq_t * iseq,
+	      VALUE type, VALUE self, VALUE specval,
+	      const VALUE *pc, VALUE *sp, VALUE *lfp,
+	      int local_size,void* shelter_node)
+{
+    rb_control_frame_t *ncfp=vm_push_frame(th,iseq,type,self,specval,pc,sp,lfp,local_size);
+    if(shelter_node){
+        ncfp->shelter_node=shelter_node;
+    }
+    return ncfp;
+}
 static inline void
 vm_pop_frame(rb_thread_t *th)
 {

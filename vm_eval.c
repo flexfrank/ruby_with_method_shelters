@@ -15,6 +15,7 @@ static inline VALUE method_missing(VALUE obj, ID id, int argc, const VALUE *argv
 static inline VALUE rb_vm_set_finish_env(rb_thread_t * th);
 static inline VALUE vm_yield_with_cref(rb_thread_t *th, int argc, const VALUE *argv, const NODE *cref);
 static inline VALUE vm_yield(rb_thread_t *th, int argc, const VALUE *argv);
+static inline VALUE vm_yield_with_shelter_node(rb_thread_t *th, int argc, const VALUE *argv,void* shelter_node);
 static inline VALUE vm_backtrace(rb_thread_t *th, int lev);
 static int vm_backtrace_each(rb_thread_t *th, int lev, void (*init)(void *), rb_backtrace_iter_func *iter, void *arg);
 static NODE *vm_cref_push(rb_thread_t *th, VALUE klass, int noex, rb_block_t *blockptr);
@@ -738,6 +739,11 @@ static inline VALUE
 rb_yield_0(int argc, const VALUE * argv)
 {
     return vm_yield(GET_THREAD(), argc, argv);
+}
+
+VALUE
+rb_yield_with_shelter_node(void* shelter_node){
+    return vm_yield_with_shelter_node(GET_THREAD(),0,0,shelter_node);
 }
 
 VALUE
