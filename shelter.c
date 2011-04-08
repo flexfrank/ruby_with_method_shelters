@@ -8,6 +8,7 @@
 VALUE rb_cShelter;
 VALUE rb_cShelterNode;
 
+typedef struct shelter_node_struct shelter_node_t;
 typedef struct shelter_struct{
   VALUE name;
   int hidden;
@@ -15,6 +16,7 @@ typedef struct shelter_struct{
   VALUE hidden_imports;
   st_table *exposed_method_table; /*klass->symbol->symbol*/
   st_table *hidden_method_table;  /*klass->symbol->symbol*/
+  shelter_node_t* root_node;
 } shelter_t;
 
 static inline shelter_t* current_shelter();
@@ -31,7 +33,7 @@ typedef enum{
     SEARCH_ROOT_HIDDEN
 } SHELTER_SEARCH_ROOT_TYPE;
 
-typedef struct shelter_node_struct{
+struct shelter_node_struct{
     shelter_t* shelter;
     struct shelter_node_struct** exposed_imports;
     long exposed_num;
@@ -41,7 +43,7 @@ typedef struct shelter_node_struct{
     struct shelter_node_struct* search_root;
     SHELTER_IMPORT_TYPE import_type;
     SHELTER_SEARCH_ROOT_TYPE search_root_type;
-} shelter_node_t;
+};
 
 
 
@@ -88,6 +90,7 @@ mark_shelter_node(shelter_node_t* node){
 static void
 free_shelter_node(shelter_node_t* node){
     long i;
+    if(node==NULL){return;}
     for(i=0;i < node->exposed_num;i++){
         free_shelter_node(node->exposed_imports[i]);
     }
@@ -182,6 +185,7 @@ shelter_free(void* shelter){
   st_foreach(s->hidden_method_table,method_table_mark,0);
   st_free_table(s->exposed_method_table);
   st_free_table(s->hidden_method_table);
+  free_shelter_node(s->root_node);
   free(shelter);
 }
 
@@ -231,6 +235,7 @@ shelter_alloc(VALUE klass,VALUE name){
   s->exposed_method_table=st_init_numtable();
   s->hidden_method_table=st_init_numtable();
   s->hidden=0;
+  s->root_node=0;
   return Data_Wrap_Struct(klass,shelter_mark,shelter_free, s);
 }
 
@@ -510,6 +515,7 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
 
     Data_Get_Struct(shelter_val,shelter_t, shelter);
     node= make_shelter_tree(shelter,0,SHELTER_IMPORT_ROOT);
+    shelter->root_node=node;
     rb_p(rb_sprintf("nodeBefore:%p",node));
 
     rb_yield_with_shelter_node(node);
