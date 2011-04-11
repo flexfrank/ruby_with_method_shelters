@@ -534,7 +534,7 @@ vm_setup_method(rb_thread_t *th, rb_control_frame_t *cfp,
 static inline VALUE
 vm_call_method(rb_thread_t *th, rb_control_frame_t *cfp,
 	       int num, const rb_block_t *blockptr, VALUE flag,
-	       ID id, const rb_method_entry_t *me, VALUE recv)
+	       ID id, const rb_method_entry_t *me, VALUE recv,void* next_node)
 {
     VALUE val;
 
@@ -1362,12 +1362,7 @@ static inline const rb_method_entry_t *
 vm_method_search(VALUE id, VALUE klass, IC ic)
 {
     rb_method_entry_t *me;
-    VALUE search_id;
-    if(is_in_shelter()){
-        search_id=search_shelter_method_name(id,klass);
-    }else{
-        search_id=id;
-    }
+
 #if OPT_INLINE_METHOD_CACHE
     if (LIKELY(klass == ic->ic_class) &&
 	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {

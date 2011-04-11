@@ -202,7 +202,6 @@ shelter_convert_method_name(VALUE klass,ID methodname){
     rb_str_concat(newname,rb_sprintf("%p#",s));
     rb_str_concat(newname,rb_id2str(methodname));
     newname_sym=rb_str_intern(newname);
-    rb_p(newname);
 
     if(s->hidden){
       mtbl=s->hidden_method_table;
@@ -414,12 +413,6 @@ shelter_inspect(VALUE self){
   
 }
 
-VALUE
-search_shelter_method_name(VALUE id, VALUE klass){
-    //rb_p(id);
-    return id;
-}
-
 enum {
     SHELTER_NODE_MAX_DEPTH=256
 } shelter_node_max_depth;
@@ -524,12 +517,155 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
     return Qnil;
 }
 
-static VALUE
-current_node(VALUE self){
+static shelter_node_t*
+cur_node(){
     rb_thread_t* th=GET_THREAD(); 
     rb_control_frame_t* cfp=th->cfp;
-    shelter_node_t* node = cfp->shelter_node;
+    return cfp->shelter_node;
+}
+ 
+
+static VALUE
+current_node(VALUE self){
+    shelter_node_t* node = cur_node();
     rb_p(rb_sprintf("node:%p",node));
+    return Qnil;
+}
+
+static VALUE
+shelter_lookup_method_table(st_table *table, VALUE klass, VALUE name){
+    st_table* name2name_table=NULL;
+    if(st_lookup(table,klass,(st_data_t*)&name2name_table)){
+        VALUE conv_method_name=Qfalse;
+        if(st_lookup(name2name_table,name,&conv_method_name)){
+            return conv_method_name;
+        }
+    
+    }
+    
+    return Qfalse;
+}
+
+static VALUE
+lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node);
+
+static inline VALUE
+lookup_imports(VALUE klass, VALUE name, shelter_node_t** imports, long num, shelter_node_t** found_node){
+    long i;
+    VALUE* found_names=malloc(sizeof(VALUE)*num);
+    shelter_node_t** found_nodes= malloc(sizeof(shelter_node_t*)*num);
+    long found_num=0;
+    VALUE result;
+    for(i=0;i<num;i++){
+        shelter_node_t* n=imports[i];
+        shelter_node_t* fnode=NULL;
+        VALUE fname=lookup_exposed(klass,name,n,&fnode);
+
+        if(RTEST(name)){
+            found_names[found_num]=fname;
+            found_nodes[found_num]=fnode;
+            found_num++;
+        }
+    }
+    if(found_num==0){
+        if(found_node)*found_node=NULL;
+        result=Qfalse;
+    }else{
+        result=found_names[0];
+        if(found_node)*found_node=found_nodes[0];
+        for(i=1;i<found_num;i++){
+            if(result!=found_names[i]){
+                result=Qfalse;
+                if(found_node)*found_node=NULL;
+                break;
+            }
+        }
+    }
+    
+    free(found_names);
+    free(found_nodes);
+    return result;
+}
+
+static VALUE
+lookup_hidden(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node){
+    VALUE conv_name=shelter_lookup_method_table(node->shelter->hidden_method_table,klass,name);
+    if(RTEST(conv_name)){
+        if(next_node)*next_node=node;
+        return conv_name;
+    }else{
+        return lookup_imports(klass,name,node->hidden_imports,node->hidden_num,next_node);
+
+    }
+}
+
+static VALUE
+lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node){
+    VALUE conv_name=shelter_lookup_method_table(node->shelter->exposed_method_table,klass,name);
+    if(RTEST(conv_name)){
+        if(next_node)*next_node=node;
+        return conv_name;
+    }else{
+        return lookup_imports(klass,name,node->exposed_imports,node->exposed_num,next_node);
+    }
+}
+/*now only look current node*/
+static VALUE
+lookup_in_shelter_on_class(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node)
+{
+    VALUE conv_name=Qfalse;
+    if((conv_name=lookup_hidden(klass,name,node,next_node))){
+        return conv_name;
+    }else{
+        shelter_node_t* root=search_root(node);
+        SHELTER_SEARCH_ROOT_TYPE type=search_root_type(node);
+        if(type==SEARCH_ROOT_EXPOSED){
+            conv_name=lookup_exposed(klass,name,root,next_node);
+        }else if(type ==SEARCH_ROOT_HIDDEN){
+            conv_name=lookup_hidden(klass,name,root,next_node);
+        }
+        return conv_name;
+    }
+}
+
+static inline VALUE
+lookup_in_shelter(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node){
+    VALUE conv_name=Qfalse;
+    VALUE cls=klass;
+    while(!(conv_name=lookup_in_shelter_on_class(cls,name,node,next_node))){
+        cls=RCLASS_SUPER(cls);
+        if(!cls){
+            *next_node=node;
+            return name;
+        }
+    }
+    return conv_name;
+
+}
+
+static VALUE
+shelter_lookup(VALUE self,VALUE name){
+    shelter_node_t *next_node;
+    return lookup_in_shelter(CLASS_OF(self),name, cur_node(),&next_node); 
+}
+
+static inline VALUE
+shelter_search_method_name_symbol(VALUE klass, VALUE name, void** next_node){
+    shelter_node_t* nnode=NULL;
+    VALUE conv_name=lookup_in_shelter(klass,name, cur_node(),&nnode);
+    if(GET_VM()->running&& conv_name){
+        /*rb_p(rb_str_new2("method:"));
+        rb_p(name);
+        rb_p(conv_name);*/
+    }
+    if(next_node){*next_node=nnode;}
+    return RTEST(conv_name) ? conv_name : name;
+}
+
+ID
+shelter_search_method_name(ID id, VALUE klass, void** next_node){
+
+    return SYM2ID(shelter_search_method_name_symbol(klass,ID2SYM(id),next_node));
 }
 
 void Init_Shelter(void){
@@ -539,6 +675,7 @@ void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"expose", expose_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"current_node", current_node, 0);
   rb_define_singleton_method(rb_vm_top_self(),"shelter_eval", shelter_eval, 1);
+  rb_define_method(rb_cObject, "sl", shelter_lookup,1);
   rb_cShelter = rb_define_class("Shelter", rb_cObject);
   rb_cShelterNode = rb_define_class_under(rb_cShelter,"ShelterNode", rb_cObject);
   rb_define_method(rb_cShelter,"to_s",shelter_to_s,0);

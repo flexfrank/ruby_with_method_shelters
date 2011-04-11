@@ -156,8 +156,8 @@ extern VALUE ruby_vm_const_missing_count;
   c1->nd_next = __tmp_c2->nd_next; \
 } while (0)
 
-#define CALL_METHOD(num, blockptr, flag, id, me, recv) do { \
-    VALUE v = vm_call_method(th, GET_CFP(), num, blockptr, flag, id, me, recv); \
+#define CALL_METHOD_WITH_SHELTER(num, blockptr, flag, id, me, recv,next_node) do { \
+    VALUE v = vm_call_method(th, GET_CFP(), num, blockptr, flag, id, me, recv,next_node); \
     if (v == Qundef) { \
 	RESTORE_REGS(); \
 	NEXT_INSN(); \
@@ -167,6 +167,7 @@ extern VALUE ruby_vm_const_missing_count;
     } \
 } while (0)
 
+#define CALL_METHOD(num, blockptr, flag, id, me, recv)   CALL_METHOD_WITH_SHELTER(num, blockptr, flag, id, me, recv,0)
 #define GET_BLOCK_PTR() \
   ((rb_block_t *)(GC_GUARDED_PTR_REF(GET_LFP()[0] & \
 				     ((GET_LFP()[0] & 0x02) - 0x02))))
