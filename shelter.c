@@ -2,6 +2,7 @@
 #include "ruby/util.h"
 #include "ruby/st.h"
 #include "eval_intern.h"
+#include "vm_core.h"
 #define ARRAY_LAST(ary) (RARRAY_PTR(ary)[RARRAY_LEN(ary)-1])
 
 
@@ -33,6 +34,7 @@ typedef enum{
     SEARCH_ROOT_HIDDEN
 } SHELTER_SEARCH_ROOT_TYPE;
 
+typedef struct shelter_node_chache_key shelter_cache_key;
 struct shelter_node_struct{
     shelter_t* shelter;
     struct shelter_node_struct** exposed_imports;
@@ -43,10 +45,35 @@ struct shelter_node_struct{
     struct shelter_node_struct* search_root;
     SHELTER_IMPORT_TYPE import_type;
     SHELTER_SEARCH_ROOT_TYPE search_root_type;
+    //shelter_cache_key* cache_keys;
+    st_table *method_cache_table;
 };
 
+struct shelter_node_chache_key{
+    VALUE klass;
+    ID name;
+    //struct shelter_node_cache_key* next_key;
+};
 
+typedef struct shelter_node_chache_entry{
+    VALUE vm_state;
+    VALUE shelter_method_name;
+    shelter_node_t* next_node;
+} shelter_cache_entry;
 
+static int
+compare_shelter_cache(shelter_cache_key* key1, shelter_cache_key* key2){
+    
+    int result=key1->klass==key2->klass && key1->name==key2->name;
+    return !result;
+}
+
+static st_index_t
+hash_shelter_cache(shelter_cache_key* key){
+    return 31*key->klass+key->name*7;
+}
+
+static struct st_hash_type shelter_cache_hash_type={compare_shelter_cache,hash_shelter_cache};
 
 static shelter_node_t*
 make_shelter_node(
@@ -71,6 +98,8 @@ make_shelter_node(
     node->parent=NULL;
     node->search_root=NULL;
     node->import_type=type;
+    //node->cache_keys=NULL;
+    node->method_cache_table = st_init_table(&shelter_cache_hash_type);
 }
 
 static void shelter_mark(void*);
@@ -87,6 +116,13 @@ mark_shelter_node(shelter_node_t* node){
     }
 }
 
+static int
+free_cache_entries(shelter_cache_key* key, shelter_cache_entry* val, st_data_t arg){
+    free(key);
+    free(val);
+    return ST_CONTINUE;
+}
+
 static void
 free_shelter_node(shelter_node_t* node){
     long i;
@@ -99,6 +135,11 @@ free_shelter_node(shelter_node_t* node){
         free_shelter_node(node->hidden_imports[i]);
     }
     free(node->hidden_imports);
+
+    st_foreach(node->method_cache_table, free_cache_entries, 0);
+    st_free_table(node->method_cache_table);
+
+
     free(node);
 }
 
@@ -550,7 +591,7 @@ static VALUE
 lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node);
 
 static inline VALUE
-lookup_imports(VALUE klass, VALUE name, shelter_node_t** imports, long num, shelter_node_t** found_node){
+lookup_imports(VALUE klass, VALUE name,shelter_node_t* node, shelter_node_t** imports, long num, shelter_node_t** found_node){
     long i;
     VALUE* found_names=malloc(sizeof(VALUE)*num);
     shelter_node_t** found_nodes= malloc(sizeof(shelter_node_t*)*num);
@@ -561,7 +602,7 @@ lookup_imports(VALUE klass, VALUE name, shelter_node_t** imports, long num, shel
         shelter_node_t* fnode=NULL;
         VALUE fname=lookup_exposed(klass,name,n,&fnode);
 
-        if(RTEST(name)){
+        if(RTEST(fname)){
             found_names[found_num]=fname;
             found_nodes[found_num]=fnode;
             found_num++;
@@ -584,6 +625,13 @@ lookup_imports(VALUE klass, VALUE name, shelter_node_t** imports, long num, shel
     
     free(found_names);
     free(found_nodes);
+    if(found_num>0 && !RTEST(result)){
+        rb_raise(rb_eRuntimeError,"method %s of class %s in shelter %s is duplicated",
+                rb_id2name(SYM2ID(name)),
+                rb_class2name(klass),
+                rb_id2name(SYM2ID(node->shelter->name))
+        );
+    }
     return result;
 }
 
@@ -594,7 +642,7 @@ lookup_hidden(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **ne
         if(next_node)*next_node=node;
         return conv_name;
     }else{
-        return lookup_imports(klass,name,node->hidden_imports,node->hidden_num,next_node);
+        return lookup_imports(klass,name,node,node->hidden_imports,node->hidden_num,next_node);
 
     }
 }
@@ -606,7 +654,7 @@ lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **n
         if(next_node)*next_node=node;
         return conv_name;
     }else{
-        return lookup_imports(klass,name,node->exposed_imports,node->exposed_num,next_node);
+        return lookup_imports(klass,name,node,node->exposed_imports,node->exposed_num,next_node);
     }
 }
 /*now only look current node*/
@@ -650,22 +698,45 @@ shelter_lookup(VALUE self,VALUE name){
 }
 
 static inline VALUE
-shelter_search_method_name_symbol(VALUE klass, VALUE name, void** next_node){
+shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* current_node,shelter_node_t** next_node){
     shelter_node_t* nnode=NULL;
+
     VALUE conv_name=lookup_in_shelter(klass,name, cur_node(),&nnode);
-    if(GET_VM()->running&& conv_name){
-        /*rb_p(rb_str_new2("method:"));
+    /*if(GET_VM()->running&& conv_name){
+        rb_p(rb_str_new2("method:"));
         rb_p(name);
-        rb_p(conv_name);*/
-    }
+        rb_p(conv_name);
+    }*/
+
     if(next_node){*next_node=nnode;}
     return RTEST(conv_name) ? conv_name : name;
 }
-
+//extern VALUE ruby_vm_global_state_version;
 ID
 shelter_search_method_name(ID id, VALUE klass, void** next_node){
+    shelter_cache_entry* entry;
+    shelter_cache_key key={klass,id};
+    shelter_node_t* current_node=cur_node();
+    if(LIKELY(st_lookup(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&entry))){
+        if(LIKELY(entry->vm_state == GET_VM_STATE_VERSION())){
+            if(next_node) *next_node=entry->next_node;
+            return entry->shelter_method_name;
+        }
+    }
+    ID conv_id= SYM2ID(shelter_search_method_name_symbol(klass,ID2SYM(id),current_node,(shelter_node_t**)next_node));
 
-    return SYM2ID(shelter_search_method_name_symbol(klass,ID2SYM(id),next_node));
+    shelter_cache_key* new_key;
+    if(!st_get_key(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&new_key)){
+        new_key=malloc(sizeof(shelter_cache_key));
+        new_key->klass=klass;
+        new_key->name=id;
+    }
+    entry=malloc(sizeof(shelter_cache_entry));
+    entry->vm_state=GET_VM_STATE_VERSION();
+    entry->shelter_method_name=conv_id;
+    entry->next_node=*next_node;
+    st_insert(current_node->method_cache_table,(st_data_t)new_key,(st_data_t)entry);
+    return conv_id;
 }
 
 void Init_Shelter(void){
