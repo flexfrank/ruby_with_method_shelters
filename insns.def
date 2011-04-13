@@ -1004,8 +1004,7 @@ send
     klass = CLASS_OF(recv);
     if(GET_CFP()->shelter_node){
         void* next_node;
-        ID sh_id= shelter_search_method_name(id,klass,&next_node);
-        me = rb_method_entry(klass,sh_id);
+        me = shelter_search_method(id,klass,&next_node);
         CALL_METHOD_WITH_SHELTER(num,blockptr,flag,id,me,recv,next_node);
     }else{
         me = vm_method_search(id, klass, ic);

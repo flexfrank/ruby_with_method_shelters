@@ -58,6 +58,7 @@ struct shelter_node_chache_key{
 typedef struct shelter_node_chache_entry{
     VALUE vm_state;
     VALUE shelter_method_name;
+    rb_method_entry_t* me;
     shelter_node_t* next_node;
 } shelter_cache_entry;
 
@@ -550,11 +551,11 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
     Data_Get_Struct(shelter_val,shelter_t, shelter);
     node= make_shelter_tree(shelter,0,SHELTER_IMPORT_ROOT);
     shelter->root_node=node;
-    rb_p(rb_sprintf("nodeBefore:%p",node));
+    //rb_p(rb_sprintf("nodeBefore:%p",node));
 
     rb_yield_with_shelter_node(node);
 
-    dump_shelter_tree(node,0);
+    //dump_shelter_tree(node,0);
     return Qnil;
 }
 
@@ -657,7 +658,6 @@ lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **n
         return lookup_imports(klass,name,node,node->exposed_imports,node->exposed_num,next_node);
     }
 }
-/*now only look current node*/
 static VALUE
 lookup_in_shelter_on_class(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node)
 {
@@ -712,18 +712,19 @@ shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* curre
     return RTEST(conv_name) ? conv_name : name;
 }
 //extern VALUE ruby_vm_global_state_version;
-ID
-shelter_search_method_name(ID id, VALUE klass, void** next_node){
+void*
+shelter_search_method(ID id, VALUE klass, void** next_node){
     shelter_cache_entry* entry;
     shelter_cache_key key={klass,id};
     shelter_node_t* current_node=cur_node();
     if(LIKELY(st_lookup(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&entry))){
         if(LIKELY(entry->vm_state == GET_VM_STATE_VERSION())){
             if(next_node) *next_node=entry->next_node;
-            return entry->shelter_method_name;
+            return entry->me;
         }
     }
-    ID conv_id= SYM2ID(shelter_search_method_name_symbol(klass,ID2SYM(id),current_node,(shelter_node_t**)next_node));
+    ID conv_id=SYM2ID(shelter_search_method_name_symbol(klass,ID2SYM(id),current_node,(shelter_node_t**)next_node));
+    rb_method_entry_t* me=rb_method_entry(klass,conv_id);
 
     shelter_cache_key* new_key;
     if(!st_get_key(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&new_key)){
@@ -734,9 +735,10 @@ shelter_search_method_name(ID id, VALUE klass, void** next_node){
     entry=malloc(sizeof(shelter_cache_entry));
     entry->vm_state=GET_VM_STATE_VERSION();
     entry->shelter_method_name=conv_id;
+    entry->me=me;
     entry->next_node=*next_node;
     st_insert(current_node->method_cache_table,(st_data_t)new_key,(st_data_t)entry);
-    return conv_id;
+    return me;
 }
 
 void Init_Shelter(void){
