@@ -139,7 +139,11 @@ struct iseq_inline_cache_entry {
     VALUE ic_class;
     union {
 	VALUE value;
-	rb_method_entry_t *method;
+        struct{
+            void* shelter_node;
+            void* next_node;
+	    rb_method_entry_t *method;
+        } method_s;
 	long index;
     } ic_value;
 };

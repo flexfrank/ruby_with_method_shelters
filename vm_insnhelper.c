@@ -1364,14 +1364,14 @@ vm_method_search(VALUE id, VALUE klass, IC ic)
     rb_method_entry_t *me;
 
 #if OPT_INLINE_METHOD_CACHE
-    if (LIKELY(klass == ic->ic_class) &&
+    if (LIKELY(klass == ic->ic_class) && ic->ic_value.method_s.shelter_node==0 &&
 	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {
-	me = ic->ic_value.method;
+	me = ic->ic_value.method_s.method;
     }
     else {
 	me = rb_method_entry(klass, id);
 	ic->ic_class = klass;
-	ic->ic_value.method = me;
+	ic->ic_value.method_s.method = me;
 	ic->ic_vmstat = GET_VM_STATE_VERSION();
     }
 #else

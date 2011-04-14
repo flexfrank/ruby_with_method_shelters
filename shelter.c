@@ -712,11 +712,11 @@ shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* curre
     return RTEST(conv_name) ? conv_name : name;
 }
 //extern VALUE ruby_vm_global_state_version;
+
 void*
-shelter_search_method(ID id, VALUE klass, void** next_node){
+shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node, shelter_node_t** next_node){
     shelter_cache_entry* entry;
     shelter_cache_key key={klass,id};
-    shelter_node_t* current_node=cur_node();
     if(LIKELY(st_lookup(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&entry))){
         if(LIKELY(entry->vm_state == GET_VM_STATE_VERSION())){
             if(next_node) *next_node=entry->next_node;
@@ -741,6 +741,32 @@ shelter_search_method(ID id, VALUE klass, void** next_node){
     return me;
 }
 
+#define USE_INLINE_METHOD_CACHE_IN_SHELTER 1
+void*
+shelter_search_method(ID id, VALUE klass, void** next_node,IC ic){
+    shelter_node_t* current_node=cur_node();
+    rb_method_entry_t *me;
+
+#if USE_INLINE_METHOD_CACHE_IN_SHELTER
+    if (LIKELY(klass == ic->ic_class) && LIKELY(ic->ic_value.method_s.shelter_node==current_node) &&
+	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {
+	me = ic->ic_value.method_s.method;
+        if(next_node)next_node=ic->ic_value.method_s.next_node;
+    } else {
+        shelter_node_t* nnode;
+        me = shelter_search_method_without_ic(id,klass,current_node,&nnode);
+        if(next_node)*next_node=nnode;
+	ic->ic_class = klass;
+	ic->ic_value.method_s.method = me;
+        ic->ic_value.method_s.next_node = nnode;
+        ic->ic_value.method_s.shelter_node = current_node;
+	ic->ic_vmstat = GET_VM_STATE_VERSION();
+    }
+#else
+    me = shelter_search_method_without_ic(id,klass,current_node,(shelter_node_t**)next_node);
+#endif
+    return me;
+}
 void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"shelter", define_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"import", import_shelter, 1);
