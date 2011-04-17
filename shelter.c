@@ -3,13 +3,13 @@
 #include "ruby/st.h"
 #include "eval_intern.h"
 #include "vm_core.h"
+#include "shelter.h"
 #define ARRAY_LAST(ary) (RARRAY_PTR(ary)[RARRAY_LEN(ary)-1])
 
 
 VALUE rb_cShelter;
 VALUE rb_cShelterNode;
 
-typedef struct shelter_node_struct shelter_node_t;
 typedef struct shelter_struct{
   VALUE name;
   int hidden;
@@ -55,12 +55,12 @@ struct shelter_node_chache_key{
     //struct shelter_node_cache_key* next_key;
 };
 
-typedef struct shelter_node_chache_entry{
+/*typedef struct shelter_node_chache_entry{
     VALUE vm_state;
     VALUE shelter_method_name;
     rb_method_entry_t* me;
     shelter_node_t* next_node;
-} shelter_cache_entry;
+} shelter_cache_entry;*/
 
 static int
 compare_shelter_cache(shelter_cache_key* key1, shelter_cache_key* key2){
@@ -713,7 +713,7 @@ shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* curre
 }
 //extern VALUE ruby_vm_global_state_version;
 
-static shelter_cache_entry*
+shelter_cache_entry*
 shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node){
     shelter_cache_entry* entry;
     shelter_cache_key key={klass,id};
@@ -741,7 +741,7 @@ shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node
     return entry;
 }
 
-#define USE_INLINE_METHOD_CACHE_IN_SHELTER 1
+/*#define USE_INLINE_METHOD_CACHE_IN_SHELTER 1
 void*
 shelter_search_method(ID id, VALUE klass, void** next_node,IC ic){
     shelter_node_t* current_node=cur_node();
@@ -768,7 +768,7 @@ shelter_search_method(ID id, VALUE klass, void** next_node,IC ic){
     me = shelter_search_method_without_ic(id,klass,current_node,(shelter_node_t**)next_node);
 #endif
     return me;
-}
+}*/
 void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"shelter", define_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"import", import_shelter, 1);

@@ -12,6 +12,7 @@
 #include "insns.inc"
 #include "shelter.h"
 #include <math.h>
+#include "shelter.h"
 
 /* control stack frame */
 
@@ -1358,13 +1359,36 @@ vm_setivar(VALUE obj, ID id, VALUE val, IC ic)
 #endif
 }
 
+#define USE_INLINE_METHOD_CACHE_IN_SHELTER 1
+static inline shelter_cache_entry *
+shelter_search_method(ID id, VALUE klass, IC ic){
+    shelter_node_t* current_node=SHELTER_CURRENT_NODE();
+    shelter_cache_entry* entry;
+#if USE_INLINE_METHOD_CACHE_IN_SHELTER && OPT_INLINE_METHOD_CACHE
+    if (LIKELY(klass == ic->ic_class) && LIKELY(ic->ic_value.method_s.shelter_node==current_node) &&
+	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {
+        entry=ic->ic_value.method_s.method_e.shelter_cache_entry;
+    } else {
+        entry = shelter_search_method_without_ic(id,klass,current_node);
+	ic->ic_class = klass;
+	ic->ic_value.method_s.method_e.shelter_cache_entry=entry;
+        ic->ic_value.method_s.shelter_node = current_node;
+	ic->ic_vmstat = GET_VM_STATE_VERSION();
+    }
+#else
+    entry = shelter_search_method_without_ic(id,klass,current_node);
+#endif
+    return entry;
+}
+
+
 static inline const rb_method_entry_t *
 vm_method_search(VALUE id, VALUE klass, IC ic)
 {
     rb_method_entry_t *me;
 
 #if OPT_INLINE_METHOD_CACHE
-    if (LIKELY(klass == ic->ic_class) && ic->ic_value.method_s.shelter_node==0 &&
+    if (LIKELY(klass == ic->ic_class) && LIKELY(ic->ic_value.method_s.shelter_node==0) &&
 	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {
 	me = ic->ic_value.method_s.method_e.method;
     }
