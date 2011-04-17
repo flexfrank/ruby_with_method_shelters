@@ -141,8 +141,10 @@ struct iseq_inline_cache_entry {
 	VALUE value;
         struct{
             void* shelter_node;
-            void* next_node;
-	    rb_method_entry_t *method;
+            union{
+                void* shelter_cache_entry;
+	        rb_method_entry_t *method;
+            }method_e;
         } method_s;
 	long index;
     } ic_value;
