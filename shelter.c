@@ -258,7 +258,6 @@ shelter_convert_method_name(VALUE klass,ID methodname){
     }
 
     st_insert(conv_name_tbl,ID2SYM(methodname),newname_sym);
-   
 
     return SYM2ID(newname_sym);
   }else{
@@ -672,6 +671,10 @@ lookup_in_shelter_on_class(VALUE klass, VALUE name, shelter_node_t *node, shelte
         }else if(type ==SEARCH_ROOT_HIDDEN){
             conv_name=lookup_hidden(klass,name,root,next_node);
         }
+        if(!RTEST(conv_name) && rb_method_entry(klass,SYM2ID(name))){
+            conv_name=name;
+            *next_node=node;
+        }
         return conv_name;
     }
 }
@@ -687,6 +690,11 @@ lookup_in_shelter(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t 
             return name;
         }
     }
+    /*VALUE ary=rb_ary_new();
+    rb_ary_push(ary,cls);
+    rb_ary_push(ary,conv_name);
+    rb_ary_push(ary,(*next_node)->shelter->name);
+    rb_p(ary);*/
     return conv_name;
 
 }
@@ -741,34 +749,12 @@ shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node
     return entry;
 }
 
-/*#define USE_INLINE_METHOD_CACHE_IN_SHELTER 1
-void*
-shelter_search_method(ID id, VALUE klass, void** next_node,IC ic){
-    shelter_node_t* current_node=cur_node();
-    rb_method_entry_t *me;
 
-#if USE_INLINE_METHOD_CACHE_IN_SHELTER
-    if (LIKELY(klass == ic->ic_class) && LIKELY(ic->ic_value.method_s.shelter_node==current_node) &&
-	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {
-        shelter_cache_entry* entry=ic->ic_value.method_s.method_e.shelter_cache_entry;
-	me = entry->me;
-        if(next_node)
-            *next_node=entry->next_node;
-    } else {
-        shelter_node_t* nnode;
-        shelter_cache_entry* entry = shelter_search_method_without_ic(id,klass,current_node);
-        me=entry->me;
-        if(next_node)*next_node=entry->next_node;
-	ic->ic_class = klass;
-	ic->ic_value.method_s.method_e.shelter_cache_entry=entry;
-        ic->ic_value.method_s.shelter_node = current_node;
-	ic->ic_vmstat = GET_VM_STATE_VERSION();
-    }
-#else
-    me = shelter_search_method_without_ic(id,klass,current_node,(shelter_node_t**)next_node);
-#endif
-    return me;
-}*/
+rb_method_entry_t*
+shelter_method_entry(VALUE klass, ID id){
+   return  shelter_search_method_without_ic(id, klass, cur_node())->me;
+}
+
 void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"shelter", define_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"import", import_shelter, 1);

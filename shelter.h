@@ -13,4 +13,5 @@ ID shelter_convert_method_name(VALUE klass,ID methodname);
 /*int is_in_shelter();*/
 /*void* shelter_search_method(ID name, VALUE klass, void** next_node,IC ic);*/
 shelter_cache_entry* shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node);
+rb_method_entry_t* shelter_method_entry(VALUE klass, ID id);
 #endif /*RUBY_SHELTER_H*/
