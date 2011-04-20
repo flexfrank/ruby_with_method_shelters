@@ -750,9 +750,12 @@ shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node
 }
 
 
-rb_method_entry_t*
+shelter_cache_entry*
 shelter_method_entry(VALUE klass, ID id){
-   return  shelter_search_method_without_ic(id, klass, cur_node())->me;
+   return  shelter_search_method_without_ic(id, klass, cur_node());
+}
+VALUE shelter_name_of_node(shelter_node_t* node){
+    return node->shelter->name;
 }
 
 void Init_Shelter(void){

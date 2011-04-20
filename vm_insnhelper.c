@@ -22,12 +22,6 @@
 
 static rb_control_frame_t *vm_get_ruby_level_caller_cfp(rb_thread_t *th, rb_control_frame_t *cfp);
 
-/*static inline rb_control_frame_t *
-vm_push_frame_with_shelter_node(rb_thread_t * th, const rb_iseq_t * iseq,
-	      VALUE type, VALUE self, VALUE specval,
-	      const VALUE *pc, VALUE *sp, VALUE *lfp,
-	      int local_size,void* shelter_node)
-{*/
 static inline rb_control_frame_t *
 vm_push_frame(rb_thread_t * th, const rb_iseq_t * iseq,
 	      VALUE type, VALUE self, VALUE specval,
@@ -73,7 +67,7 @@ vm_push_frame(rb_thread_t * th, const rb_iseq_t * iseq,
     cfp->proc = 0;
     cfp->me = 0;
 
-    if(type==VM_FRAME_MAGIC_TOP){
+    if(UNLIKELY(type==VM_FRAME_MAGIC_TOP)){
         cfp->shelter_node=0;
     }else{
         cfp->shelter_node=prevcfp->shelter_node;
@@ -481,7 +475,7 @@ vm_method_missing(rb_thread_t *th, ID id, VALUE recv,
 static inline void
 vm_setup_method(rb_thread_t *th, rb_control_frame_t *cfp,
 		VALUE recv, int argc, const rb_block_t *blockptr, VALUE flag,
-		const rb_method_entry_t *me)
+		const rb_method_entry_t *me,void* next_node)
 {
     int opt_pc, i;
     VALUE *sp, *rsp = cfp->sp - argc;
@@ -503,9 +497,9 @@ vm_setup_method(rb_thread_t *th, rb_control_frame_t *cfp,
 	    *sp++ = Qnil;
 	}
 
-	vm_push_frame(th, iseq,
+	vm_push_frame_with_shelter_node(th, iseq,
 		      VM_FRAME_MAGIC_METHOD, recv, (VALUE) blockptr,
-		      iseq->iseq_encoded + opt_pc, sp, 0, 0);
+		      iseq->iseq_encoded + opt_pc, sp, 0, 0, next_node);
 
 	cfp->sp = rsp - 1 /* recv */;
     }
@@ -526,9 +520,9 @@ vm_setup_method(rb_thread_t *th, rb_control_frame_t *cfp,
 	    *sp++ = Qnil;
 	}
 
-	vm_push_frame(th, iseq,
+	vm_push_frame_with_shelter_node(th, iseq,
 		      VM_FRAME_MAGIC_METHOD, recv, (VALUE) blockptr,
-		      iseq->iseq_encoded + opt_pc, sp, 0, 0);
+		      iseq->iseq_encoded + opt_pc, sp, 0, 0, next_node);
     }
 }
 
@@ -546,7 +540,7 @@ vm_call_method(rb_thread_t *th, rb_control_frame_t *cfp,
 	  normal_method_dispatch:
 	    switch (me->def->type) {
 	      case VM_METHOD_TYPE_ISEQ:{
-		vm_setup_method(th, cfp, recv, num, blockptr, flag, me);
+		vm_setup_method(th, cfp, recv, num, blockptr, flag, me, next_node);
 		return Qundef;
 	      }
 	      case VM_METHOD_TYPE_NOTIMPLEMENTED:

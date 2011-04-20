@@ -1041,12 +1041,13 @@ invokesuper
     }
 
     if(GET_CFP()->shelter_node){
-        me = shelter_method_entry(klass, id); 
+        shelter_cache_entry* entry= shelter_method_entry(klass, id); 
+        CALL_METHOD_WITH_SHELTER(num, blockptr, flag, id, entry->me, recv, entry->next_node);
     }else{
         me = rb_method_entry(klass, id);
+        CALL_METHOD(num, blockptr, flag, id, me, recv);
     }
 
-    CALL_METHOD(num, blockptr, flag, id, me, recv);
 }
 
 /**

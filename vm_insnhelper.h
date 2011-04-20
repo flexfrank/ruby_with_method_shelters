@@ -194,14 +194,24 @@ extern VALUE ruby_vm_const_missing_count;
 
 #define CALL_SIMPLE_METHOD(num, id, recv) do { \
     VALUE klass = CLASS_OF(recv); \
-    CALL_METHOD(num, 0, 0, id, vm_method_search(id, klass, ic), recv); \
+    if(GET_CFP()->shelter_node){\
+        shelter_cache_entry* entry= shelter_method_entry(klass,id);\
+        CALL_METHOD_WITH_SHELTER(num, 0, 0, id, entry->me, recv, entry->next_node);\
+    }else{\
+        CALL_METHOD(num, 0, 0, id, vm_method_search(id, klass, ic), recv); \
+    }\
 } while (0)
 
 #else
 
 #define CALL_SIMPLE_METHOD(num, id, recv) do { \
     VALUE klass = CLASS_OF(recv); \
-    CALL_METHOD(num, 0, 0, id, rb_method_entry(klass, id), recv); \
+    if(GET_CFP()->shelter_node){\
+        shelter_cache_entry* entry= shelter_search_method(id,klass,ic);\
+        CALL_METHOD_WITH_SHELTER(num, 0, 0, id, entry->me, recv, entry->next_node);\
+    }else{\
+        CALL_METHOD(num, 0, 0, id, rb_method_entry(klass, id), recv); \
+    }\
 } while (0)
 
 #endif

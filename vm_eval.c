@@ -63,7 +63,7 @@ vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
 	    *reg_cfp->sp++ = argv[i];
 	}
 
-	vm_setup_method(th, reg_cfp, recv, argc, blockptr, 0 /* flag */, me);
+	vm_setup_method(th, reg_cfp, recv, argc, blockptr, 0 /* flag */, me, 0);
 	val = vm_exec(th);
 	break;
       }
