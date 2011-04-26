@@ -329,7 +329,22 @@ define_shelter(VALUE self,VALUE name){
   return val;
 }
 
-
+static inline VALUE
+cur_shelter(VALUE self){
+  rb_thread_t* th=GET_THREAD();
+  if(th->shelter_stack){
+    long len=RARRAY_LEN(th->shelter_stack);
+    if(len>0){
+      VALUE last=ARRAY_LAST(th->shelter_stack);
+      if(RTEST(last)){
+        return last;
+      }else{
+        return Qnil;
+      }
+    }
+  }
+  return Qnil;
+}
 static inline shelter_t*
 current_shelter(){
   rb_thread_t* th=GET_THREAD();
@@ -764,6 +779,7 @@ void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"hide", hide_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"expose", expose_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"current_node", current_node, 0);
+  rb_define_singleton_method(rb_vm_top_self(),"current_shelter", cur_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"shelter_eval", shelter_eval, 1);
   rb_define_method(rb_cObject, "sl", shelter_lookup,1);
   rb_cShelter = rb_define_class("Shelter", rb_cObject);

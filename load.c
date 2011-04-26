@@ -365,6 +365,9 @@ rb_f_load(int argc, VALUE *argv)
 {
     VALUE fname, wrap, path;
 
+    if(RTEST(GET_THREAD()->shelter_stack)){
+        rb_ary_push(GET_THREAD()->shelter_stack,Qnil);
+    }
     rb_scan_args(argc, argv, "11", &fname, &wrap);
     path = rb_find_file(FilePathValue(fname));
     if (!path) {
@@ -373,6 +376,11 @@ rb_f_load(int argc, VALUE *argv)
 	path = fname;
     }
     rb_load_internal(path, RTEST(wrap));
+
+    if(RTEST(GET_THREAD()->shelter_stack)){
+        rb_ary_pop(GET_THREAD()->shelter_stack);
+    }
+    rb_scan_args(argc, argv, "11", &fname, &wrap);
     return Qtrue;
 }
 
@@ -574,6 +582,9 @@ rb_require_safe(VALUE fname, int safe)
     } volatile saved;
     char *volatile ftptr = 0;
 
+    if(RTEST(GET_THREAD()->shelter_stack)){
+        rb_ary_push(GET_THREAD()->shelter_stack, Qnil);
+    }
     PUSH_TAG();
     saved.safe = rb_safe_level();
     if ((state = EXEC_TAG()) == 0) {
@@ -620,6 +631,9 @@ rb_require_safe(VALUE fname, int safe)
 
     th->errinfo = errinfo;
 
+    if(RTEST(GET_THREAD()->shelter_stack)){
+        rb_ary_pop(GET_THREAD()->shelter_stack );
+    }
     return result;
 }
 
