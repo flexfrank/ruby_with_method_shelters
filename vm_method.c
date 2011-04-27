@@ -945,7 +945,7 @@ rb_alias(VALUE klass, ID name, ID def)
     }
 
     if (flag == NOEX_UNDEF) flag = orig_me->flag;
-    rb_method_entry_set(target_klass, name, orig_me, flag);
+    rb_method_entry_set(target_klass, shelter_convert_method_name(target_klass,name), orig_me, flag);
 }
 
 /*
