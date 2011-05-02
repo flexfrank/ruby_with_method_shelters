@@ -1358,6 +1358,7 @@ static inline shelter_cache_entry *
 shelter_search_method(ID id, VALUE klass, IC ic){
     shelter_node_t* current_node=SHELTER_CURRENT_NODE();
     shelter_cache_entry* entry;
+    
 #if USE_INLINE_METHOD_CACHE_IN_SHELTER && OPT_INLINE_METHOD_CACHE
     if (LIKELY(klass == ic->ic_class) && LIKELY(ic->ic_value.method_s.shelter_node==current_node) &&
 	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {

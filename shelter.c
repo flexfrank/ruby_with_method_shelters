@@ -320,7 +320,7 @@ define_shelter(VALUE self,VALUE name){
     rb_define_const(rb_cShelter, rb_id2name(shelterid),shelter);
   }
   rb_thread_t *th = GET_THREAD();
-  if(!th->shelter_stack){
+  if(!RTEST(th->shelter_stack)){
     th->shelter_stack=rb_ary_tmp_new(1);
   }
   rb_ary_push(th->shelter_stack,shelter);
@@ -577,15 +577,19 @@ static shelter_node_t*
 cur_node(){
     rb_thread_t* th=GET_THREAD(); 
     rb_control_frame_t* cfp=th->cfp;
-    return cfp->shelter_node;
+    shelter_node_t* n= cfp->shelter_node;
+    return n;
 }
  
 
 static VALUE
 current_node(VALUE self){
     shelter_node_t* node = cur_node();
-    rb_p(rb_sprintf("node:%p",node));
-    return Qnil;
+    if(node){
+        return node->shelter->name;
+    }else{
+        return Qnil;
+    }
 }
 
 static VALUE
@@ -778,8 +782,8 @@ void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"import", import_shelter, 1);
   rb_define_singleton_method(rb_vm_top_self(),"hide", hide_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"expose", expose_shelter, 0);
-  rb_define_singleton_method(rb_vm_top_self(),"current_node", current_node, 0);
-  rb_define_singleton_method(rb_vm_top_self(),"current_shelter", cur_shelter, 0);
+  rb_define_method(rb_cObject,"current_node", current_node, 0);
+  rb_define_method(rb_cObject,"current_shelter", cur_shelter, 0);
   rb_define_singleton_method(rb_vm_top_self(),"shelter_eval", shelter_eval, 1);
   rb_define_method(rb_cObject, "sl", shelter_lookup,1);
   rb_cShelter = rb_define_class("Shelter", rb_cObject);

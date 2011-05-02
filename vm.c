@@ -1823,6 +1823,7 @@ th_init2(rb_thread_t *th, VALUE self)
     th->status = THREAD_RUNNABLE;
     th->errinfo = Qnil;
     th->last_status = Qnil;
+    th->shelter_stack=Qfalse;
 
 #if USE_VALUE_CACHE
     th->value_cache_ptr = &th->value_cache[0];
