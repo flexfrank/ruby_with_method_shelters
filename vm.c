@@ -372,6 +372,7 @@ vm_make_env_each(rb_thread_t * const th, rb_control_frame_t * const cfp,
     env->block.lfp = cfp->lfp;
     env->block.dfp = cfp->dfp;
     env->block.iseq = cfp->iseq;
+    env->block.shelter_node=cfp->shelter_node;
 
     if (!RUBY_VM_NORMAL_ISEQ_P(cfp->iseq)) {
 	/* TODO */

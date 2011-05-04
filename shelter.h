@@ -5,7 +5,7 @@
 typedef struct shelter_node_struct shelter_node_t;
 typedef struct shelter_node_chache_entry{
     VALUE vm_state;
-    VALUE shelter_method_name;
+    ID shelter_method_id;
     rb_method_entry_t* me;
     shelter_node_t* next_node;
 } shelter_cache_entry;

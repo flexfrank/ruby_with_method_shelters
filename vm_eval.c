@@ -32,9 +32,10 @@ typedef enum call_type {
 
 static VALUE send_internal(int argc, const VALUE *argv, VALUE recv, call_type scope);
 
+
 static inline VALUE
-vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
-	 const rb_method_entry_t *me)
+vm_call0_with_shelter(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
+	 const rb_method_entry_t *me,void* next_node)
 {
     const rb_method_definition_t *def = me->def;
     VALUE val;
@@ -63,7 +64,7 @@ vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
 	    *reg_cfp->sp++ = argv[i];
 	}
 
-	vm_setup_method(th, reg_cfp, recv, argc, blockptr, 0 /* flag */, me, 0);
+	vm_setup_method(th, reg_cfp, recv, argc, blockptr, 0 /* flag */, me, next_node);
 	val = vm_exec(th);
 	break;
       }
@@ -119,8 +120,13 @@ vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
 
 	RB_GC_GUARD(new_args);
 	rb_ary_unshift(new_args, ID2SYM(id));
-	return rb_funcall2(recv, idMethodMissing,
-			   argc+1, RARRAY_PTR(new_args));
+        if(GET_THREAD()->cfp->shelter_node){
+            return rb_funcall2_in_shelter(recv, idMethodMissing, argc+1, 
+                                        RARRAY_PTR(new_args));
+        }else{
+            return rb_funcall2(recv, idMethodMissing,
+                               argc+1, RARRAY_PTR(new_args));
+        }
       }
       case VM_METHOD_TYPE_OPTIMIZED: {
 	switch (def->body.optimize_type) {
@@ -147,7 +153,11 @@ vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
     RUBY_VM_CHECK_INTS();
     return val;
 }
-
+static inline VALUE
+vm_call0(rb_thread_t* th, VALUE recv, VALUE id, int argc, const VALUE *argv,
+	 const rb_method_entry_t *me){
+    return vm_call0_with_shelter(th,recv,id,argc,argv,me,0);
+}
 VALUE
 rb_vm_call(rb_thread_t *th, VALUE recv, VALUE id, int argc, const VALUE *argv,
 	   const rb_method_entry_t *me)
@@ -573,7 +583,12 @@ method_missing(VALUE obj, ID id, int argc, const VALUE *argv, int call_status)
     if (rb_method_basic_definition_p(CLASS_OF(obj) , idMethodMissing)) {
 	raise_method_missing(th, argc+1, nargv, obj, call_status | NOEX_MISSING);
     }
-    result = rb_funcall2(obj, idMethodMissing, argc + 1, nargv);
+
+    if(GET_THREAD()->cfp->shelter_node){
+        result = rb_funcall2_in_shelter(obj, idMethodMissing, argc+1, nargv);
+    }else{
+        result = rb_funcall2(obj, idMethodMissing, argc + 1, nargv);
+    }
     if (argv_ary) rb_ary_clear(argv_ary);
     return result;
 }
@@ -651,6 +666,14 @@ rb_funcall2(VALUE recv, ID mid, int argc, const VALUE *argv)
 {
     return rb_call(recv, mid, argc, argv, CALL_FCALL);
 }
+VALUE
+rb_funcall2_in_shelter(VALUE recv, ID mid, int argc, const VALUE *argv)
+{
+    shelter_cache_entry* entry = shelter_search_method_without_ic(mid,CLASS_OF(recv),SHELTER_CURRENT_NODE());
+    return vm_call0_with_shelter(GET_THREAD(),recv, entry->shelter_method_id, argc, argv, entry->me ,entry->next_node);
+}
+
+
 
 /*!
  * Calls a method.
@@ -742,8 +765,9 @@ rb_yield_0(int argc, const VALUE * argv)
 }
 
 VALUE
-rb_yield_with_shelter_node(void* shelter_node){
-    return vm_yield_with_shelter_node(GET_THREAD(),0,0,shelter_node);
+rb_yield_with_shelter_node(void* shelter_node,VALUE node_val){
+    VALUE args[1]={node_val};
+    return vm_yield_with_shelter_node(GET_THREAD(),1,args,shelter_node);
 }
 
 VALUE

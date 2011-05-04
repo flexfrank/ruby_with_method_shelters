@@ -17,7 +17,7 @@ typedef struct shelter_struct{
   VALUE hidden_imports;
   st_table *exposed_method_table; /*klass->symbol->symbol*/
   st_table *hidden_method_table;  /*klass->symbol->symbol*/
-  shelter_node_t* root_node;
+  //shelter_node_t* root_node;
 } shelter_t;
 
 static inline shelter_t* current_shelter();
@@ -103,18 +103,29 @@ make_shelter_node(
     node->method_cache_table = st_init_table(&shelter_cache_hash_type);
 }
 
+static int
+mark_node_cache_table(st_data_t key, st_data_t val, st_data_t arg){
+    shelter_cache_entry* entry=(shelter_cache_entry*)val;
+    shelter_cache_key* keyp=(shelter_cache_key*)key;
+    if(entry->me){
+        rb_mark_method_entry(entry->me);
+    }
+    return ST_CONTINUE;
+}
+
 static void shelter_mark(void*);
 static void
 mark_shelter_node(shelter_node_t* node){
     long i;
+    //fprintf(stderr,"node_marked(%p)",node);
     shelter_mark(node->shelter);
     for(i=0;i < node->exposed_num;i++){
         mark_shelter_node(node->exposed_imports[i]);
     }
-    free(node->exposed_imports);
     for(i=0;i < node->hidden_num;i++){
         mark_shelter_node(node->hidden_imports[i]);
     }
+    st_foreach(node->method_cache_table,mark_node_cache_table,0);
 }
 
 static int
@@ -141,6 +152,7 @@ free_shelter_node(shelter_node_t* node){
     st_free_table(node->method_cache_table);
 
 
+    //fprintf(stderr,"freed_node(%p)\n",node);
     free(node);
 }
 
@@ -205,6 +217,7 @@ method_table_mark(st_data_t key, st_data_t val, st_data_t arg){
 
 static void 
 shelter_mark(void* shelter){
+    //fprintf(stderr,"shelter_marked(%p)",shelter);
   shelter_t* s=shelter;
   rb_gc_mark(s->name);
   rb_gc_mark(s->exposed_imports);
@@ -215,19 +228,20 @@ shelter_mark(void* shelter){
 }
 
 static int
-method_shelter_table_free(st_data_t key,st_data_t val,st_data_t arg){
-  st_table_free((st_table*)val);
+method_table_free(st_data_t key,st_data_t val,st_data_t arg){
+  st_free_table((st_table*)val);
   return ST_CONTINUE;
 }
 
 static void 
 shelter_free(void* shelter){
   shelter_t* s=shelter;
-  st_foreach(s->exposed_method_table,method_table_mark,0);
-  st_foreach(s->hidden_method_table,method_table_mark,0);
+  st_foreach(s->exposed_method_table,method_table_free,0);
+  st_foreach(s->hidden_method_table,method_table_free,0);
   st_free_table(s->exposed_method_table);
   st_free_table(s->hidden_method_table);
-  free_shelter_node(s->root_node);
+  //free_shelter_node(s->root_node);
+  //fprintf(stderr,"shelter_freed:%p",shelter);
   free(shelter);
 }
 
@@ -258,7 +272,6 @@ shelter_convert_method_name(VALUE klass,ID methodname){
     }
 
     st_insert(conv_name_tbl,ID2SYM(methodname),newname_sym);
-
     return SYM2ID(newname_sym);
   }else{
     return methodname;
@@ -275,7 +288,7 @@ shelter_alloc(VALUE klass,VALUE name){
   s->exposed_method_table=st_init_numtable();
   s->hidden_method_table=st_init_numtable();
   s->hidden=0;
-  s->root_node=0;
+  //s->root_node=0;
   return Data_Wrap_Struct(klass,shelter_mark,shelter_free, s);
 }
 
@@ -552,7 +565,7 @@ dump_shelter_tree(shelter_node_t* node,int depth){
 
 }
 
-VALUE rb_yield_with_shelter_node(void* shelter_node);
+VALUE rb_yield_with_shelter_node(void* shelter_node,VALUE node_val);
 
 VALUE
 shelter_eval(VALUE self, VALUE shelter_symbol){
@@ -560,17 +573,18 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
     shelter_t* shelter;
     rb_thread_t* th=GET_THREAD();
     shelter_node_t* node;
-    VALUE node_val;
+    volatile VALUE node_val;
+    VALUE result;
 
     Data_Get_Struct(shelter_val,shelter_t, shelter);
     node= make_shelter_tree(shelter,0,SHELTER_IMPORT_ROOT);
-    shelter->root_node=node;
+    //shelter->root_node=node;
     //rb_p(rb_sprintf("nodeBefore:%p",node));
-
-    rb_yield_with_shelter_node(node);
+    node_val=Data_Wrap_Struct(rb_cShelterNode,shelter_node_mark, shelter_node_free,node);
+    result=rb_yield_with_shelter_node(node,node_val);
 
     //dump_shelter_tree(node,0);
-    return Qnil;
+    return result;
 }
 
 static shelter_node_t*
@@ -591,7 +605,8 @@ current_node(VALUE self){
         return Qnil;
     }
 }
-
+static int dump_method_table_entry(st_data_t,st_data_t,st_data_t);
+static int dump_method_table(st_data_t,st_data_t,st_data_t);
 static VALUE
 shelter_lookup_method_table(st_table *table, VALUE klass, VALUE name){
     st_table* name2name_table=NULL;
@@ -601,8 +616,7 @@ shelter_lookup_method_table(st_table *table, VALUE klass, VALUE name){
             return conv_method_name;
         }
     
-    }
-    
+    }    
     return Qfalse;
 }
 
@@ -665,7 +679,18 @@ lookup_hidden(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **ne
 
     }
 }
+static int
+dump_method_table_entry(st_data_t key, st_data_t val, st_data_t arg){
+    fprintf(stderr,"  %s(%lx) -> %s\n",rb_id2name(SYM2ID((VALUE)key)),key,rb_id2name(SYM2ID((VALUE)val)));
+    return  ST_CONTINUE;
 
+}
+static int
+dump_method_table(st_data_t key, st_data_t val, st_data_t arg){
+    fprintf(stderr,"class %s(%lx)\n",rb_class2name((VALUE)key), key);
+    st_foreach((st_table*)val,dump_method_table_entry,0);
+    return ST_CONTINUE;
+}
 static VALUE
 lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node){
     VALUE conv_name=shelter_lookup_method_table(node->shelter->exposed_method_table,klass,name);
@@ -690,7 +715,7 @@ lookup_in_shelter_on_class(VALUE klass, VALUE name, shelter_node_t *node, shelte
         }else if(type ==SEARCH_ROOT_HIDDEN){
             conv_name=lookup_hidden(klass,name,root,next_node);
         }
-        if(!RTEST(conv_name) && rb_method_entry(klass,SYM2ID(name))){
+        if(!RTEST(conv_name) && st_lookup(RCLASS_M_TBL(klass), SYM2ID(name), NULL)){
             conv_name=name;
             *next_node=node;
         }
@@ -761,7 +786,7 @@ shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node
     }
     entry=malloc(sizeof(shelter_cache_entry));
     entry->vm_state=GET_VM_STATE_VERSION();
-    entry->shelter_method_name=conv_id;
+    entry->shelter_method_id=conv_id;
     entry->me=me;
     entry->next_node=next_node;
     st_insert(current_node->method_cache_table,(st_data_t)new_key,(st_data_t)entry);
@@ -784,7 +809,7 @@ void Init_Shelter(void){
   rb_define_singleton_method(rb_vm_top_self(),"expose", expose_shelter, 0);
   rb_define_method(rb_cObject,"current_node", current_node, 0);
   rb_define_method(rb_cObject,"current_shelter", cur_shelter, 0);
-  rb_define_singleton_method(rb_vm_top_self(),"shelter_eval", shelter_eval, 1);
+  rb_define_method(rb_cObject,"shelter_eval", shelter_eval, 1);
   rb_define_method(rb_cObject, "sl", shelter_lookup,1);
   rb_cShelter = rb_define_class("Shelter", rb_cObject);
   rb_cShelterNode = rb_define_class_under(rb_cShelter,"ShelterNode", rb_cObject);

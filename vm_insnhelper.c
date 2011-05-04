@@ -461,6 +461,7 @@ vm_method_missing_args(rb_thread_t *th, VALUE *argv,
     th->passed_block = blockptr;
     POPN(num + 1);
 }
+VALUE rb_funcall2_in_shelter(VALUE recv, ID mid, int argc, const VALUE *argv); 
 
 static inline VALUE
 vm_method_missing(rb_thread_t *th, ID id, VALUE recv,
@@ -469,7 +470,11 @@ vm_method_missing(rb_thread_t *th, ID id, VALUE recv,
     VALUE *argv = ALLOCA_N(VALUE, num + 1);
     vm_method_missing_args(th, argv, num, blockptr, opt);
     argv[0] = ID2SYM(id);
-    return rb_funcall2(recv, idMethodMissing, num + 1, argv);
+    if(GET_THREAD()->cfp->shelter_node){
+        return rb_funcall2_in_shelter(recv, idMethodMissing, num+1, argv);
+    }else{
+        return rb_funcall2(recv, idMethodMissing, num + 1, argv);
+    }
 }
 
 static inline void
@@ -1391,6 +1396,7 @@ vm_method_search(VALUE id, VALUE klass, IC ic)
 	me = rb_method_entry(klass, id);
 	ic->ic_class = klass;
 	ic->ic_value.method_s.method_e.method = me;
+        ic->ic_value.method_s.shelter_node=NULL;
 	ic->ic_vmstat = GET_VM_STATE_VERSION();
     }
 #else
