@@ -1216,6 +1216,13 @@ rb_mod_modfunc(int argc, VALUE *argv, VALUE module)
 int
 rb_method_basic_definition_p(VALUE klass, ID id)
 {
+    void* shelter_node=GET_THREAD()->cfp->shelter_node;
+    if(shelter_node){
+        shelter_cache_entry *entry=shelter_search_method_without_ic(id,klass,shelter_node);
+        if(entry->shelter_method_id!=id){
+            return 0;
+        }
+    }
     const rb_method_entry_t *me = rb_method_entry(klass, id);
     if (me && (me->flag & NOEX_BASIC))
 	return 1;

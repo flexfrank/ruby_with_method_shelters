@@ -260,8 +260,13 @@ check_funcall_exec(struct rescue_funcall_args *args)
 
     RB_GC_GUARD(new_args);
     rb_ary_unshift(new_args, args->sym);
-    return rb_funcall2(args->recv, idMethodMissing,
+    if(GET_THREAD()->cfp->shelter_node){
+        return rb_funcall2_in_shelter(args->recv, idMethodMissing, 
+                        args->argc+1, RARRAY_PTR(new_args));
+    }else{
+        return rb_funcall2(args->recv, idMethodMissing,
 		       args->argc+1, RARRAY_PTR(new_args));
+    }
 }
 
 static VALUE
