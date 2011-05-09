@@ -4,50 +4,20 @@
 #include "eval_intern.h"
 #include "vm_core.h"
 #include "shelter.h"
+#include "vm_insnhelper.h"
 #define ARRAY_LAST(ary) (RARRAY_PTR(ary)[RARRAY_LEN(ary)-1])
 
 
 VALUE rb_cShelter;
 VALUE rb_cShelterNode;
 
-typedef struct shelter_struct{
-  VALUE name;
-  int hidden;
-  VALUE exposed_imports;
-  VALUE hidden_imports;
-  st_table *exposed_method_table; /*klass->symbol->symbol*/
-  st_table *hidden_method_table;  /*klass->symbol->symbol*/
-  //shelter_node_t* root_node;
-} shelter_t;
 
 static inline shelter_t* current_shelter();
 
-typedef enum{
-    SHELTER_IMPORT_ROOT,
-    SHELTER_IMPORT_EXPOSED,
-    SHELTER_IMPORT_HIDDEN
-} SHELTER_IMPORT_TYPE;
 
-typedef enum{
-    SEARCH_ROOT_UNDEFINED=0,
-    SEARCH_ROOT_EXPOSED,
-    SEARCH_ROOT_HIDDEN
-} SHELTER_SEARCH_ROOT_TYPE;
 
 typedef struct shelter_node_chache_key shelter_cache_key;
-struct shelter_node_struct{
-    shelter_t* shelter;
-    struct shelter_node_struct** exposed_imports;
-    long exposed_num;
-    struct shelter_node_struct** hidden_imports;
-    long hidden_num;
-    struct shelter_node_struct* parent;
-    struct shelter_node_struct* search_root;
-    SHELTER_IMPORT_TYPE import_type;
-    SHELTER_SEARCH_ROOT_TYPE search_root_type;
-    //shelter_cache_key* cache_keys;
-    st_table *method_cache_table;
-};
+
 
 struct shelter_node_chache_key{
     VALUE klass;
@@ -240,11 +210,36 @@ shelter_free(void* shelter){
   st_foreach(s->hidden_method_table,method_table_free,0);
   st_free_table(s->exposed_method_table);
   st_free_table(s->hidden_method_table);
+  free(s->opt_redefined_flag);
   //free_shelter_node(s->root_node);
   //fprintf(stderr,"shelter_freed:%p",shelter);
   free(shelter);
 }
 
+static VALUE
+shelter_method_name_prefix(shelter_t* sh,ID methodname){
+    return rb_sprintf("shelter#%p#",sh);
+}
+
+static VALUE
+shelter_original_method_name(shelter_t* sh, ID methodname){
+    VALUE prefix = shelter_method_name_prefix(sh,methodname);
+    const char* methodname_cstr = rb_id2name(methodname);
+    if(strncmp(RSTRING_PTR(prefix), methodname_cstr,RSTRING_LEN(prefix))==0){
+        return ID2SYM(rb_intern(methodname_cstr + RSTRING_LEN(prefix)));
+    }
+    return Qfalse;
+}
+
+
+static VALUE
+shelter_name_for_shelter_method(shelter_t* sh,ID methodname){
+    VALUE newname_str=shelter_method_name_prefix(sh,methodname);
+    rb_str_concat(newname_str,rb_id2str(methodname));
+    rb_p(newname_str);
+
+    return rb_str_intern(newname_str);
+}
 
 
 ID
@@ -254,10 +249,7 @@ shelter_convert_method_name(VALUE klass,ID methodname){
     st_table* conv_name_tbl;
     st_table* mtbl;
     VALUE newname_sym;
-    VALUE newname=rb_str_new_cstr("shelter#");
-    rb_str_concat(newname,rb_sprintf("%p#",s));
-    rb_str_concat(newname,rb_id2str(methodname));
-    newname_sym=rb_str_intern(newname);
+    newname_sym=shelter_name_for_shelter_method(s,methodname);
 
     if(s->hidden){
       mtbl=s->hidden_method_table;
@@ -289,6 +281,7 @@ shelter_alloc(VALUE klass,VALUE name){
   s->hidden_method_table=st_init_numtable();
   s->hidden=0;
   //s->root_node=0;
+  s->opt_redefined_flag = calloc(BOP_LAST_,sizeof(char));
   return Data_Wrap_Struct(klass,shelter_mark,shelter_free, s);
 }
 
@@ -382,6 +375,31 @@ is_in_shelter(){
     fprintf(stderr,"is_in:%p\n",current_shelter());
     return current_shelter() != NULL;
 }
+
+rb_method_entry_t*
+shelter_original_method_entry(VALUE klass, ID name){
+    shelter_t *sh=current_shelter();
+    rb_method_entry_t* me=NULL;
+    if(sh){
+        VALUE original_name = shelter_original_method_name(sh,name);
+        if(RTEST(original_name)){
+            ID original_id = SYM2ID(original_name);
+            me=rb_method_entry(klass,original_id);
+            fprintf(stderr,"orig:%s,%s\n",rb_id2name(SYM2ID(original_name)),rb_id2name(name));
+        }        
+    }
+    return me;
+}
+
+void
+shelter_set_opt_redefined_flag(long bop){
+    shelter_t *sh=current_shelter();
+    if(sh){
+        fprintf(stderr,"redefined:%d\n",sh->opt_redefined_flag[bop]);
+        sh->opt_redefined_flag[bop]=1;
+    }
+}
+
 
 rb_method_entry_t*
 method_entry_in_shelter(VALUE klass,ID mid){

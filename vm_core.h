@@ -22,6 +22,7 @@
 #include "vm_opts.h"
 #include "id.h"
 #include "method.h"
+#include "shelter.h"
 
 #if   defined(_WIN32)
 #include "thread_win32.h"
@@ -335,7 +336,7 @@ typedef struct {
     VALUE *dfp;			/* cfp[7] / block[2] */
     rb_iseq_t *block_iseq;	/* cfp[8] / block[3] */
     VALUE proc;			/* cfp[9] / block[4] */
-    void* shelter_node;
+    shelter_node_t* shelter_node;
     const rb_method_entry_t *me;/* cfp[10] */
 } rb_control_frame_t;
 

@@ -183,7 +183,11 @@ extern VALUE ruby_vm_const_missing_count;
 
 /* optimize insn */
 #define FIXNUM_2_P(a, b) ((a) & (b) & 1)
-#define BASIC_OP_UNREDEFINED_P(op) (LIKELY(ruby_vm_redefined_flag[op] == 0))
+#define BASIC_OP_UNREDEFINED_P(op) (\
+        LIKELY(SHELTER_CURRENT_NODE() == NULL) ? \
+                LIKELY(ruby_vm_redefined_flag[op] == 0)\
+            :  LIKELY(SHELTER_CURRENT_NODE()->shelter->opt_redefined_flag[op]==0))
+
 #define HEAP_CLASS_OF(obj) RBASIC(obj)->klass
 
 #ifndef USE_IC_FOR_SPECIALIZED_METHOD

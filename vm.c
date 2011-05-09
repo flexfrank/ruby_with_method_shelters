@@ -985,6 +985,21 @@ rb_vm_check_redefinition_opt_method(const rb_method_entry_t *me)
 }
 
 static void
+shelter_check_redefinition_opt_method(VALUE klass,ID name){
+    rb_method_entry_t* me = shelter_original_method_entry(klass,name);
+    long bop;
+    if(me){
+        if (!me->def || me->def->type == VM_METHOD_TYPE_CFUNC) {
+            if (st_lookup(vm_opt_method_table, (st_data_t)me, &bop)) {
+                fprintf(stderr,"sl:%s,%ld\n",rb_id2name(name),bop);
+                shelter_set_opt_redefined_flag(bop);
+            }
+        }
+    }
+}
+
+
+static void
 add_opt_method(VALUE klass, ID mid, VALUE bop)
 {
     rb_method_entry_t *me;
