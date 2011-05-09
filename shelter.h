@@ -22,7 +22,6 @@ typedef struct shelter_struct{
   VALUE hidden_imports;
   st_table *exposed_method_table; /*klass->symbol->symbol*/
   st_table *hidden_method_table;  /*klass->symbol->symbol*/
-  char *opt_redefined_flag;
   //shelter_node_t* root_node;
 } shelter_t;
 
@@ -36,7 +35,7 @@ typedef struct shelter_node_struct{
     struct shelter_node_struct* search_root;
     SHELTER_IMPORT_TYPE import_type;
     SHELTER_SEARCH_ROOT_TYPE search_root_type;
-    //shelter_cache_key* cache_keys;
+    char *opt_redefined_flag;
     st_table *method_cache_table;
 }shelter_node_t;
 

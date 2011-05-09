@@ -984,6 +984,12 @@ rb_vm_check_redefinition_opt_method(const rb_method_entry_t *me)
     }
 }
 
+static inline int
+shelter_opt_method_unredefined_p(long bop){
+    shelter_node_t* node=SHELTER_CURRENT_NODE(); 
+    return 0;
+}
+
 static void
 shelter_check_redefinition_opt_method(VALUE klass,ID name){
     rb_method_entry_t* me = shelter_original_method_entry(klass,name);
