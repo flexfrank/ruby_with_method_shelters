@@ -379,7 +379,8 @@ current_shelter(){
 
 int
 is_in_shelter(){
-    return current_shelter != NULL;
+    fprintf(stderr,"is_in:%p\n",current_shelter());
+    return current_shelter() != NULL;
 }
 
 rb_method_entry_t*

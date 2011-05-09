@@ -674,8 +674,23 @@ rb_funcall2(VALUE recv, ID mid, int argc, const VALUE *argv)
 VALUE
 rb_funcall2_in_shelter(VALUE recv, ID mid, int argc, const VALUE *argv)
 {
-    shelter_cache_entry* entry = shelter_search_method_without_ic(mid,CLASS_OF(recv),SHELTER_CURRENT_NODE());
-    return vm_call0_with_shelter(GET_THREAD(),recv, entry->shelter_method_id, argc, argv, entry->me ,entry->next_node);
+    shelter_cache_entry* entry;
+    VALUE result;
+    rb_thread_t* th = GET_THREAD();
+    call_type scope = CALL_FCALL;
+    VALUE self=Qundef;
+
+    entry=shelter_search_method_without_ic(mid,CLASS_OF(recv),SHELTER_CURRENT_NODE());
+    int call_status = rb_method_call_status(th, entry->me, scope, self);
+    if (call_status != NOEX_OK) {
+        result = method_missing(recv, mid, argc, argv, call_status);
+    }else{
+        stack_check();
+
+        result = vm_call0_with_shelter(th,recv, entry->shelter_method_id, argc, argv, entry->me ,entry->next_node);
+    }
+
+    return result;
 }
 
 
