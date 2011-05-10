@@ -987,22 +987,12 @@ rb_vm_check_redefinition_opt_method(const rb_method_entry_t *me)
 static inline int
 shelter_opt_method_unredefined_p(long bop){
     shelter_node_t* node=SHELTER_CURRENT_NODE(); 
-    return 0;
+    long i;
+
+    return node->opt_redefined_flag[bop]==0 && ruby_vm_redefined_flag[bop]==0;
 }
 
-static void
-shelter_check_redefinition_opt_method(VALUE klass,ID name){
-    rb_method_entry_t* me = shelter_original_method_entry(klass,name);
-    long bop;
-    if(me){
-        if (!me->def || me->def->type == VM_METHOD_TYPE_CFUNC) {
-            if (st_lookup(vm_opt_method_table, (st_data_t)me, &bop)) {
-                fprintf(stderr,"sl:%s,%ld\n",rb_id2name(name),bop);
-                shelter_set_opt_redefined_flag(bop);
-            }
-        }
-    }
-}
+
 
 
 static void
@@ -1012,6 +1002,7 @@ add_opt_method(VALUE klass, ID mid, VALUE bop)
     if (st_lookup(RCLASS_M_TBL(klass), mid, (void *)&me) && me->def &&
 	me->def->type == VM_METHOD_TYPE_CFUNC) {
 	st_insert(vm_opt_method_table, (st_data_t)me, (st_data_t)bop);
+        shelter_add_opt_method(me, bop);
     }
     else {
 	rb_bug("undefined optimized method: %s", rb_id2name(mid));

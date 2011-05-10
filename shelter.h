@@ -16,13 +16,13 @@ typedef enum{
 } SHELTER_SEARCH_ROOT_TYPE;
 
 typedef struct shelter_struct{
-  VALUE name;
-  int hidden;
-  VALUE exposed_imports;
-  VALUE hidden_imports;
-  st_table *exposed_method_table; /*klass->symbol->symbol*/
-  st_table *hidden_method_table;  /*klass->symbol->symbol*/
-  //shelter_node_t* root_node;
+    VALUE name;
+    int hidden;
+    VALUE exposed_imports;
+    VALUE hidden_imports;
+    st_table *exposed_method_table; /*klass->symbol->symbol*/
+    st_table *hidden_method_table;  /*klass->symbol->symbol*/
+    //shelter_node_t* root_node;
 } shelter_t;
 
 typedef struct shelter_node_struct{
@@ -58,4 +58,5 @@ shelter_cache_entry* shelter_method_entry(VALUE klass, ID id);
 VALUE shelter_name_of_node(shelter_node_t* node);
 rb_method_entry_t* shelter_original_method_entry(VALUE klass, ID name);
 void shelter_set_opt_redefined_flag(long bop);
+void shelter_add_opt_method(rb_method_entry_t* me, long bop);
 #endif /*RUBY_SHELTER_H*/

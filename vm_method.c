@@ -7,7 +7,6 @@
 #define EXPR1(c,m) ((((c)>>3)^(m))&CACHE_MASK)
 
 static void rb_vm_check_redefinition_opt_method(const rb_method_entry_t *me);
-static void shelter_check_redefinition_opt_method(VALUE klass,ID name);
 
 static ID object_id, respond_to_missing;
 static ID removed, singleton_removed, undefined, singleton_undefined;
@@ -216,7 +215,6 @@ rb_method_entry_make(VALUE klass, ID mid, rb_method_type_t type,
 	rb_error_frozen("class/module");
     }
 
-    shelter_check_redefinition_opt_method(klass,mid);
 
     mtbl = RCLASS_M_TBL(klass);
 

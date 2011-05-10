@@ -71,7 +71,61 @@ make_shelter_node(
     node->import_type=type;
     //node->cache_keys=NULL;
     node->method_cache_table = st_init_table(&shelter_cache_hash_type);
+    node->opt_redefined_flag=NULL;
 }
+
+static st_table* shelter_opt_method_table=NULL;
+void
+shelter_add_opt_method(rb_method_entry_t* me, long bop){
+    if(shelter_opt_method_table==NULL){
+        shelter_opt_method_table = st_init_numtable();
+    }
+    st_insert(shelter_opt_method_table, (st_data_t)me, (st_data_t)bop);
+}
+
+
+static int
+is_opt_method_redefined(rb_method_entry_t* opt_me, shelter_node_t* node){
+    VALUE klass = opt_me->klass;
+    ID name = opt_me->called_id;
+    shelter_cache_entry* entry = shelter_search_method_without_ic(name,klass,node);
+    rb_method_entry_t* me = entry->me;
+    if(me && me == opt_me){
+        return 0;
+    }
+    return 1;
+}
+
+
+static int
+shelter_node_set_opt_redefined_flag_for_method(st_data_t key, st_data_t val, st_data_t arg){
+    rb_method_entry_t* me=(rb_method_entry_t*)key;
+    long bop=val;
+    shelter_node_t* node=(shelter_node_t*)arg;
+    node->opt_redefined_flag[bop] = node->opt_redefined_flag[bop] || is_opt_method_redefined(me,node);
+    /*if(node->opt_redefined_flag[bop]){
+        fprintf(stderr,"redef(%p)(%ld):%s.%s:%d\n",node,bop,rb_class2name(me->klass),rb_id2name(me->called_id),node->opt_redefined_flag[bop]);
+    }*/
+
+    return ST_CONTINUE;
+}
+
+
+static void
+shelter_node_set_opt_redefined_flag(shelter_node_t* node){
+    if(node->opt_redefined_flag==NULL){
+        node->opt_redefined_flag = calloc(BOP_LAST_,sizeof(char));  
+        long i;
+        st_foreach(shelter_opt_method_table, shelter_node_set_opt_redefined_flag_for_method,(st_data_t)node);        
+        for(i=0; i < node->exposed_num; i++){
+            shelter_node_set_opt_redefined_flag(node->exposed_imports[i]);
+        }
+        for(i=0; i < node->hidden_num; i++){
+            shelter_node_set_opt_redefined_flag(node->hidden_imports[i]);
+        }
+    }
+}
+
 
 static int
 mark_node_cache_table(st_data_t key, st_data_t val, st_data_t arg){
@@ -121,6 +175,7 @@ free_shelter_node(shelter_node_t* node){
     st_foreach(node->method_cache_table, free_cache_entries, 0);
     st_free_table(node->method_cache_table);
 
+    free(node->opt_redefined_flag);
 
     //fprintf(stderr,"freed_node(%p)\n",node);
     free(node);
@@ -210,7 +265,6 @@ shelter_free(void* shelter){
   st_foreach(s->hidden_method_table,method_table_free,0);
   st_free_table(s->exposed_method_table);
   st_free_table(s->hidden_method_table);
-  free(s->opt_redefined_flag);
   //free_shelter_node(s->root_node);
   //fprintf(stderr,"shelter_freed:%p",shelter);
   free(shelter);
@@ -236,7 +290,6 @@ static VALUE
 shelter_name_for_shelter_method(shelter_t* sh,ID methodname){
     VALUE newname_str=shelter_method_name_prefix(sh,methodname);
     rb_str_concat(newname_str,rb_id2str(methodname));
-    rb_p(newname_str);
 
     return rb_str_intern(newname_str);
 }
@@ -281,7 +334,6 @@ shelter_alloc(VALUE klass,VALUE name){
   s->hidden_method_table=st_init_numtable();
   s->hidden=0;
   //s->root_node=0;
-  s->opt_redefined_flag = calloc(BOP_LAST_,sizeof(char));
   return Data_Wrap_Struct(klass,shelter_mark,shelter_free, s);
 }
 
@@ -391,14 +443,7 @@ shelter_original_method_entry(VALUE klass, ID name){
     return me;
 }
 
-void
-shelter_set_opt_redefined_flag(long bop){
-    shelter_t *sh=current_shelter();
-    if(sh){
-        fprintf(stderr,"redefined:%d\n",sh->opt_redefined_flag[bop]);
-        sh->opt_redefined_flag[bop]=1;
-    }
-}
+
 
 
 rb_method_entry_t*
@@ -552,6 +597,13 @@ make_shelter_tree(shelter_t* shelter,long depth,SHELTER_IMPORT_TYPE type){
     return result;
 }
 
+static shelter_node_t*
+shelter_tree(shelter_t* sh){
+    shelter_node_t* node = make_shelter_tree(sh,0,SHELTER_IMPORT_ROOT);
+    shelter_node_set_opt_redefined_flag(node);
+    return node;
+}
+
 static void
 print_indent(int depth){
     int i;
@@ -596,10 +648,11 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
     VALUE result;
 
     Data_Get_Struct(shelter_val,shelter_t, shelter);
-    node= make_shelter_tree(shelter,0,SHELTER_IMPORT_ROOT);
-    //shelter->root_node=node;
+    node= shelter_tree(shelter);
+   //shelter->root_node=node;
     //rb_p(rb_sprintf("nodeBefore:%p",node));
     node_val=Data_Wrap_Struct(rb_cShelterNode,shelter_node_mark, shelter_node_free,node);
+
     result=rb_yield_with_shelter_node(node,node_val);
 
     //dump_shelter_tree(node,0);
@@ -769,20 +822,14 @@ shelter_lookup(VALUE self,VALUE name){
 }
 
 static inline VALUE
-shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* current_node,shelter_node_t** next_node){
+shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* currentnode,shelter_node_t** next_node){
     shelter_node_t* nnode=NULL;
 
-    VALUE conv_name=lookup_in_shelter(klass,name, cur_node(),&nnode);
-    /*if(GET_VM()->running&& conv_name){
-        rb_p(rb_str_new2("method:"));
-        rb_p(name);
-        rb_p(conv_name);
-    }*/
+    VALUE conv_name=lookup_in_shelter(klass,name, currentnode,&nnode);
 
     if(next_node){*next_node=nnode;}
     return RTEST(conv_name) ? conv_name : name;
 }
-//extern VALUE ruby_vm_global_state_version;
 
 shelter_cache_entry*
 shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node){
