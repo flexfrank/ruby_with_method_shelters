@@ -880,7 +880,7 @@ shelter_private_iv_name(VALUE self, VALUE sym){
     shelter_node_t* node = SHELTER_CURRENT_NODE();
     Check_Type(sym, T_SYMBOL);
     if(node){
-        VALUE ivname=rb_sprintf("@shelter_iv_%p_%s", node, rb_id2name(SYM2ID(sym)));
+        VALUE ivname=rb_sprintf("@___shelter_iv___%p___%s", node, rb_id2name(SYM2ID(sym)));
         return ID2SYM(rb_intern_str(ivname));
     }else{
         return Qnil;
