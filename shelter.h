@@ -14,7 +14,7 @@ typedef enum{
     SEARCH_ROOT_EXPOSED,
     SEARCH_ROOT_HIDDEN
 } SHELTER_SEARCH_ROOT_TYPE;
-
+typedef struct shelter_node_struct shelter_node_t;
 typedef struct shelter_struct{
     VALUE name;
     int hidden;
@@ -22,10 +22,10 @@ typedef struct shelter_struct{
     VALUE hidden_imports;
     st_table *exposed_method_table; /*klass->symbol->symbol*/
     st_table *hidden_method_table;  /*klass->symbol->symbol*/
-    //shelter_node_t* root_node;
+    shelter_node_t* root_node;
 } shelter_t;
 
-typedef struct shelter_node_struct{
+struct shelter_node_struct{
     shelter_t* shelter;
     struct shelter_node_struct** exposed_imports;
     long exposed_num;
@@ -37,7 +37,7 @@ typedef struct shelter_node_struct{
     SHELTER_SEARCH_ROOT_TYPE search_root_type;
     char *opt_redefined_flag;
     st_table *method_cache_table;
-}shelter_node_t;
+};
 
 typedef struct shelter_node_chache_entry{
     VALUE vm_state;
