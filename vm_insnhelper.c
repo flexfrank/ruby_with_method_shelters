@@ -534,7 +534,7 @@ vm_setup_method(rb_thread_t *th, rb_control_frame_t *cfp,
 static inline VALUE
 vm_call_method(rb_thread_t *th, rb_control_frame_t *cfp,
 	       int num, const rb_block_t *blockptr, VALUE flag,
-	       ID id, const rb_method_entry_t *me, VALUE recv,void* next_node)
+	       ID id, const rb_method_entry_t *me, VALUE recv, shelter_node_t* next_node)
 {
     VALUE val;
 
@@ -619,6 +619,7 @@ vm_call_method(rb_thread_t *th, rb_control_frame_t *cfp,
                     if(cfp->shelter_node){
                         shelter_cache_entry* ent = shelter_search_method_without_ic(id, CLASS_OF(recv), cfp->shelter_node);
                         me = ent->me;
+                        next_node = ent->next_node;
                     }else{
 		        me = rb_method_entry(CLASS_OF(recv), id);
                     }
