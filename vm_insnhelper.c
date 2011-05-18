@@ -616,7 +616,12 @@ vm_call_method(rb_thread_t *th, rb_control_frame_t *cfp,
 		    if (i > 0) {
 			MEMMOVE(&TOPN(i), &TOPN(i-1), VALUE, i);
 		    }
-		    me = rb_method_entry(CLASS_OF(recv), id);
+                    if(cfp->shelter_node){
+                        shelter_cache_entry* ent = shelter_search_method_without_ic(id, CLASS_OF(recv), cfp->shelter_node);
+                        me = ent->me;
+                    }else{
+		        me = rb_method_entry(CLASS_OF(recv), id);
+                    }
 		    num -= 1;
 		    DEC_SP(1);
 		    flag |= VM_CALL_FCALL_BIT | VM_CALL_OPT_SEND_BIT;

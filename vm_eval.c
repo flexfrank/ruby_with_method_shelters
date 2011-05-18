@@ -246,6 +246,28 @@ rb_call0(VALUE recv, ID mid, int argc, const VALUE *argv,
     return vm_call0(th, recv, mid, argc, argv, me);
 }
 
+static inline VALUE
+rb_call0_in_shelter(VALUE recv, ID mid, int argc, const VALUE *argv,
+                      call_type scope, VALUE self, shelter_node_t* node)
+{
+    shelter_cache_entry* entry;
+    VALUE result;
+    rb_thread_t* th = GET_THREAD();
+
+    entry=shelter_search_method_without_ic(mid,CLASS_OF(recv),node);
+    int call_status = rb_method_call_status(th, entry->me, scope, self);
+    if (call_status != NOEX_OK) {
+        result = method_missing(recv, mid, argc, argv, call_status);
+    }else{
+        stack_check();
+
+        result = vm_call0_with_shelter(th,recv, entry->shelter_method_id, argc, 
+argv, entry->me ,entry->next_node);
+    }
+
+    return result;
+}
+
 struct rescue_funcall_args {
     VALUE recv;
     VALUE sym;
@@ -674,23 +696,7 @@ rb_funcall2(VALUE recv, ID mid, int argc, const VALUE *argv)
 VALUE
 rb_funcall2_in_shelter(VALUE recv, ID mid, int argc, const VALUE *argv)
 {
-    shelter_cache_entry* entry;
-    VALUE result;
-    rb_thread_t* th = GET_THREAD();
-    call_type scope = CALL_FCALL;
-    VALUE self=Qundef;
-
-    entry=shelter_search_method_without_ic(mid,CLASS_OF(recv),SHELTER_CURRENT_NODE());
-    int call_status = rb_method_call_status(th, entry->me, scope, self);
-    if (call_status != NOEX_OK) {
-        result = method_missing(recv, mid, argc, argv, call_status);
-    }else{
-        stack_check();
-
-        result = vm_call0_with_shelter(th,recv, entry->shelter_method_id, argc, argv, entry->me ,entry->next_node);
-    }
-
-    return result;
+    return rb_call0_in_shelter(recv, mid, argc, argv, CALL_FCALL, Qundef, SHELTER_CURRENT_NODE());
 }
 
 
@@ -731,8 +737,11 @@ send_internal(int argc, const VALUE *argv, VALUE recv, call_type scope)
 
     vid = *argv++; argc--;
     PASS_PASSED_BLOCK_TH(th);
-
-    return rb_call0(recv, rb_to_id(vid), argc, argv, scope, self);
+    if(SHELTER_CURRENT_NODE()){
+        return rb_call0_in_shelter(recv, rb_to_id(vid), argc, argv, scope, self, SHELTER_CURRENT_NODE());
+    }else{
+        return rb_call0(recv, rb_to_id(vid), argc, argv, scope, self);
+    }
 }
 
 /*
