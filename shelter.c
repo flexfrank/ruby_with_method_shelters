@@ -426,7 +426,7 @@ current_shelter(){
 
 int
 is_in_shelter(){
-    fprintf(stderr,"is_in:%p\n",current_shelter());
+    //fprintf(stderr,"is_in:%p\n",current_shelter());
     return current_shelter() != NULL;
 }
 
@@ -636,6 +636,13 @@ dump_shelter_tree(shelter_node_t* node,int depth){
     print_indent(depth);
     printf("]\n");
 
+}
+
+shelter_node_t*
+shelter_current_tree_tmp(void){
+    shelter_t* shelter = current_shelter();
+    shelter_node_t* node = shelter_tree(shelter);
+    return node;
 }
 
 VALUE rb_yield_with_shelter_node(void* shelter_node,VALUE node_val);

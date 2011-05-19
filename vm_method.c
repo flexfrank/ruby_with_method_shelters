@@ -930,7 +930,14 @@ rb_alias(VALUE klass, ID name, ID def)
     }
 
   again:
-    orig_me = search_method(klass, def);
+    if(is_in_shelter()){
+        shelter_node_t* node = shelter_current_tree_tmp();
+        shelter_cache_entry* entry;
+        entry = shelter_search_method_without_ic(def, klass, node);
+        orig_me = entry->me;
+    }else{
+        orig_me = search_method(klass, def);
+    }
 
     if (UNDEFINED_METHOD_ENTRY_P(orig_me)) {
 	if ((TYPE(klass) != T_MODULE) ||
