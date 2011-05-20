@@ -931,10 +931,8 @@ rb_alias(VALUE klass, ID name, ID def)
 
   again:
     if(is_in_shelter()){
-        shelter_node_t* node = shelter_current_tree_tmp();
-        shelter_cache_entry* entry;
-        entry = shelter_search_method_without_ic(def, klass, node);
-        orig_me = entry->me;
+
+        orig_me = shelter_tmp_lookup(klass, def);
     }else{
         orig_me = search_method(klass, def);
     }

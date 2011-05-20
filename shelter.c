@@ -639,11 +639,15 @@ dump_shelter_tree(shelter_node_t* node,int depth){
 
 }
 
-shelter_node_t*
-shelter_current_tree_tmp(void){
+rb_method_entry_t*
+shelter_tmp_lookup(VALUE klass, ID mid){
     shelter_t* shelter = current_shelter();
     shelter_node_t* node = shelter_tree(shelter);
-    return node;
+    shelter_cache_entry* ent = shelter_search_method_without_ic(mid, klass, node);
+    rb_method_entry_t* me = ent->me;
+    free_shelter_node(node);
+    return me;
+    
 }
 
 VALUE rb_yield_with_shelter_node(void* shelter_node,VALUE node_val);
