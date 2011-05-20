@@ -132,6 +132,7 @@ mark_node_cache_table(st_data_t key, st_data_t val, st_data_t arg){
     shelter_cache_entry* entry=(shelter_cache_entry*)val;
     shelter_cache_key* keyp=(shelter_cache_key*)key;
     if(entry->me){
+        fprintf(stderr,"!!!!!!mark_cache_table%p\n",entry->me);
         rb_mark_method_entry(entry->me);
     }
     return ST_CONTINUE;
@@ -150,7 +151,7 @@ mark_shelter_node(shelter_node_t* node){
     for(i=0;i < node->hidden_num;i++){
         mark_shelter_node(node->hidden_imports[i]);
     }
-    st_foreach(node->method_cache_table,mark_node_cache_table,0);
+    //st_foreach(node->method_cache_table,mark_node_cache_table,0);
 }
 
 static int
