@@ -1370,16 +1370,25 @@ vm_setivar(VALUE obj, ID id, VALUE val, IC ic)
 
 #define USE_INLINE_METHOD_CACHE_IN_SHELTER 1
 static inline shelter_cache_entry *
-shelter_search_method(ID id, VALUE klass, IC ic){
+vm_shelter_search_method(ID id, VALUE klass, IC ic){
     shelter_node_t* current_node=SHELTER_CURRENT_NODE();
     shelter_cache_entry* entry;
-    
+
+#if SHELTER_LOG_CACHE_HIT
+    shelter_total_cache_hit.lookup_count++;
+    shelter_current_cache_hit.lookup_count++;
+#endif
+
 #if USE_INLINE_METHOD_CACHE_IN_SHELTER && OPT_INLINE_METHOD_CACHE
     if (LIKELY(klass == ic->ic_class) && LIKELY(ic->ic_value.method_s.shelter_node==current_node) &&
 	LIKELY(GET_VM_STATE_VERSION() == ic->ic_vmstat)) {
         entry=ic->ic_value.method_s.method_e.shelter_cache_entry;
+#if SHELTER_LOG_CACHE_HIT
+        shelter_total_cache_hit.ic_hit_count++;
+        shelter_current_cache_hit.ic_hit_count++;
+#endif
     } else {
-        entry = shelter_search_method_without_ic(id,klass,current_node);
+        entry = shelter_search_method(id,klass,current_node);
 	ic->ic_class = klass;
 	ic->ic_value.method_s.method_e.shelter_cache_entry=entry;
         ic->ic_value.method_s.shelter_node = current_node;

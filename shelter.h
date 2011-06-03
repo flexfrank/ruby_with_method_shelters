@@ -46,14 +46,24 @@ typedef struct shelter_node_chache_entry{
     shelter_node_t* next_node;
 } shelter_cache_entry;
 
+struct shelter_cache_hit_log{
+    unsigned long lookup_count;
+    unsigned long ic_hit_count;
+    unsigned long cache_hit_count;
+};
 
+struct shelter_cache_hit_log shelter_total_cache_hit;
+struct shelter_cache_hit_log shelter_current_cache_hit;
 
+#define SHELTER_LOG_CACHE_HIT 0
 
 
 ID shelter_convert_method_name(VALUE klass,ID methodname);
 int is_in_shelter();
 /*void* shelter_search_method(ID name, VALUE klass, void** next_node,IC ic);*/
 shelter_cache_entry* shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node);
+//can be called only from vm_shelter_search_method
+shelter_cache_entry* shelter_search_method(ID id, VALUE klass,shelter_node_t* current_node);
 rb_method_entry_t* shelter_tmp_lookup(VALUE klass, ID mid);
 shelter_cache_entry* shelter_method_entry(VALUE klass, ID id);
 VALUE shelter_name_of_node(shelter_node_t* node);

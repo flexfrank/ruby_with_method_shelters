@@ -491,13 +491,13 @@ import_shelter(VALUE self,VALUE import_sym){
 static VALUE
 hide_shelter(VALUE self){
   shelter_t* current = current_shelter();
-  current->hidden=TRUE;
+  current->hidden=1;
   return Qnil;
 }
 static VALUE
 expose_shelter(VALUE self){
   shelter_t* current = current_shelter();
-  current->hidden=FALSE;
+  current->hidden=0;
   return Qnil;
 }
 
@@ -650,6 +650,8 @@ shelter_tmp_lookup(VALUE klass, ID mid){
     
 }
 
+struct shelter_cache_hit_log shelter_total_cache_hit={0,};
+struct shelter_cache_hit_log shelter_current_cache_hit={0,};
 VALUE rb_yield_with_shelter_node(void* shelter_node,VALUE node_val);
 
 VALUE
@@ -661,6 +663,8 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
     volatile VALUE node_val;
     VALUE result;
 
+
+    //fprintf(stderr,"vm_version:%lx\n",GET_VM_STATE_VERSION());
     Data_Get_Struct(shelter_val,shelter_t, shelter);
     if(shelter->root_node){
         node=shelter->root_node;
@@ -671,7 +675,30 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
     //rb_p(rb_sprintf("nodeBefore:%p",node));
     //node_val=Data_Wrap_Struct(rb_cShelterNode,shelter_node_mark, shelter_node_free,node);
 
+#if SHELTER_LOG_CACHE_HIT
+    shelter_current_cache_hit.lookup_count=0;
+    shelter_current_cache_hit.ic_hit_count=0;
+    shelter_current_cache_hit.cache_hit_count=0;
+#endif
+
     result=rb_yield_with_shelter_node(node,Qnil);
+#if SHELTER_LOG_CACHE_HIT
+    fprintf(stderr,"\n\n---- IC hit %f %% (%lu / %lu)\n", 
+            100.0*shelter_total_cache_hit.ic_hit_count/shelter_total_cache_hit.lookup_count,
+            shelter_total_cache_hit.ic_hit_count,shelter_total_cache_hit.lookup_count);
+    fprintf(stderr,"---- cache hit %f %% (%lu)\n", 
+            100.0*(shelter_total_cache_hit.cache_hit_count+shelter_total_cache_hit.ic_hit_count)
+            /shelter_total_cache_hit.lookup_count,
+            shelter_total_cache_hit.cache_hit_count);
+    fprintf(stderr,"\n---- current IC hit %f %% (%lu / %lu)\n", 
+            100.0*shelter_current_cache_hit.ic_hit_count/shelter_current_cache_hit.lookup_count,
+            shelter_current_cache_hit.ic_hit_count,
+            shelter_current_cache_hit.lookup_count);
+    fprintf(stderr,"---- current cache hit %f %% (%lu)\n", 
+            100.0*(shelter_current_cache_hit.cache_hit_count+shelter_current_cache_hit.ic_hit_count)
+            /shelter_current_cache_hit.lookup_count,
+            shelter_current_cache_hit.cache_hit_count);
+#endif
 
     //dump_shelter_tree(node,0);
     return result;
@@ -850,12 +877,18 @@ shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* curre
 }
 
 shelter_cache_entry*
-shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node){
+shelter_search_method(ID id, VALUE klass,shelter_node_t* current_node){
     shelter_cache_entry* entry;
     shelter_cache_key key={klass,id};
     shelter_node_t* next_node;
+
+
     if(LIKELY(st_lookup(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&entry))){
         if(LIKELY(entry->vm_state == GET_VM_STATE_VERSION())){
+#if SHELTER_LOG_CACHE_HIT
+            shelter_total_cache_hit.cache_hit_count++;
+            shelter_current_cache_hit.cache_hit_count++;
+#endif
             return entry;
         }
     }
@@ -877,6 +910,21 @@ shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node
     return entry;
 }
 
+shelter_cache_entry* 
+shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node){
+#if SHELTER_LOG_CACHE_HIT
+    unsigned long total_hit   = shelter_total_cache_hit.cache_hit_count;
+    unsigned long current_hit = shelter_current_cache_hit.cache_hit_count;
+#endif
+
+    shelter_cache_entry* result = shelter_search_method(id, klass, current_node);    
+
+#if SHELTER_LOG_CACHE_HIT
+    shelter_total_cache_hit.cache_hit_count = total_hit;
+    shelter_current_cache_hit.cache_hit_count = current_hit;
+#endif
+    return result;
+}
 
 shelter_cache_entry*
 shelter_method_entry(VALUE klass, ID id){
