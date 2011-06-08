@@ -6,7 +6,7 @@
 typedef enum{
     SHELTER_IMPORT_ROOT,
     SHELTER_IMPORT_EXPOSED,
-    SHELTER_IMPORT_HIDDEN
+    SHELTER_IMPORT_HIDDEN,
 } SHELTER_IMPORT_TYPE;
 
 typedef enum{
@@ -37,6 +37,7 @@ struct shelter_node_struct{
     SHELTER_SEARCH_ROOT_TYPE search_root_type;
     char *opt_redefined_flag;
     st_table *method_cache_table;
+    struct shelter_node_struct* empty_import;
 };
 
 typedef struct shelter_node_chache_entry{

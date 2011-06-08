@@ -56,22 +56,44 @@ make_shelter_node(
     long i;
     shelter_node_t* node=malloc(sizeof(shelter_node_t));
     node->shelter=shelter;
-    node->exposed_imports=malloc(sizeof(shelter_node_t*)*exposed_num);
-    for(i=0; i < exposed_num;i++){
-        node->exposed_imports[i]=exposed_imports[i];
+    if(exposed_num==0){
+        node->exposed_imports=NULL;
+    }else{
+        node->exposed_imports=malloc(sizeof(shelter_node_t*)*exposed_num);
+        for(i=0; i < exposed_num;i++){
+            node->exposed_imports[i]=exposed_imports[i];
+        }
     }
     node->exposed_num=exposed_num;
-    node->hidden_imports=malloc(sizeof(shelter_node_t*)*hidden_num);
-    for(i=0;i < hidden_num;i++){
-        node->hidden_imports[i]=hidden_imports[i];
+    if(hidden_num==0){
+        node->hidden_imports=NULL;
+    }else{
+        node->hidden_imports=malloc(sizeof(shelter_node_t*)*hidden_num);
+        for(i=0;i < hidden_num;i++){
+            node->hidden_imports[i]=hidden_imports[i];
+        }
     }
     node->hidden_num=hidden_num;
     node->parent=NULL;
     node->search_root=NULL;
     node->import_type=type;
+    node->search_root_type=SEARCH_ROOT_UNDEFINED;
     //node->cache_keys=NULL;
     node->method_cache_table = st_init_table(&shelter_cache_hash_type);
     node->opt_redefined_flag=NULL;
+    node->empty_import=NULL;
+    return node;
+}
+
+static shelter_node_t*
+make_empty_shelter_node(shelter_node_t* node){
+    if(node->empty_import){
+        return node->empty_import;
+    }else{
+        shelter_node_t* empty= make_shelter_node(NULL,NULL,0,NULL,0,SHELTER_IMPORT_EXPOSED);
+        empty->parent=node;
+        return empty;
+    }
 }
 
 static st_table* shelter_opt_method_table=NULL;
@@ -178,6 +200,7 @@ free_shelter_node(shelter_node_t* node){
     st_free_table(node->method_cache_table);
 
     free(node->opt_redefined_flag);
+    free_shelter_node(node->empty_import);
 
     //fprintf(stderr,"freed_node(%p)\n",node);
     free(node);
@@ -591,11 +614,15 @@ make_shelter_tree(shelter_t* shelter,long depth,SHELTER_IMPORT_TYPE type){
     free(ex_nodes);
     free(hi_nodes);
 
-    for(i=0; i < result->exposed_num; i++){
-        result->exposed_imports[i]->parent=result;
+    if(result->exposed_imports){
+        for(i=0; i < result->exposed_num; i++){
+            result->exposed_imports[i]->parent=result;
+        }
     }
-    for(i=0; i < result->hidden_num; i++){
-        result->hidden_imports[i]->parent=result;
+    if(result->hidden_imports){
+        for(i=0; i < result->hidden_num; i++){
+            result->hidden_imports[i]->parent=result;
+        }
     }
     return result;
 }
@@ -727,7 +754,7 @@ static int dump_method_table(st_data_t,st_data_t,st_data_t);
 static VALUE
 shelter_lookup_method_table(st_table *table, VALUE klass, VALUE name){
     st_table* name2name_table=NULL;
-    if(st_lookup(table,klass,(st_data_t*)&name2name_table)){
+    if(table && st_lookup(table,klass,(st_data_t*)&name2name_table)){
         VALUE conv_method_name=Qfalse;
         if(st_lookup(name2name_table,name,&conv_method_name)){
             return conv_method_name;
@@ -743,10 +770,15 @@ lookup_exposed(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **n
 static inline VALUE
 lookup_imports(VALUE klass, VALUE name,shelter_node_t* node, shelter_node_t** imports, long num, shelter_node_t** found_node){
     long i;
-    VALUE* found_names=malloc(sizeof(VALUE)*num);
-    shelter_node_t** found_nodes= malloc(sizeof(shelter_node_t*)*num);
+    VALUE* found_names;
+    shelter_node_t** found_nodes;
     long found_num=0;
     VALUE result;
+
+    if(num==0) return Qfalse;
+
+    found_names=malloc(sizeof(VALUE)*num);
+    found_nodes= malloc(sizeof(shelter_node_t*)*num);
     for(i=0;i<num;i++){
         shelter_node_t* n=imports[i];
         shelter_node_t* fnode=NULL;
@@ -787,6 +819,7 @@ lookup_imports(VALUE klass, VALUE name,shelter_node_t* node, shelter_node_t** im
 
 static VALUE
 lookup_hidden(VALUE klass, VALUE name, shelter_node_t *node, shelter_node_t **next_node){
+    if(!node->shelter) return Qfalse;
     VALUE conv_name=shelter_lookup_method_table(node->shelter->hidden_method_table,klass,name);
     if(RTEST(conv_name)){
         if(next_node)*next_node=node;
@@ -834,7 +867,7 @@ lookup_in_shelter_on_class(VALUE klass, VALUE name, shelter_node_t *node, shelte
         }
         if(!RTEST(conv_name) && st_lookup(RCLASS_M_TBL(klass), SYM2ID(name), NULL)){
             conv_name=name;
-            *next_node=node;
+            *next_node=make_empty_shelter_node(node);
         }
         return conv_name;
     }
@@ -882,6 +915,9 @@ shelter_search_method(ID id, VALUE klass,shelter_node_t* current_node){
     shelter_cache_key key={klass,id};
     shelter_node_t* next_node;
 
+    if(current_node->method_cache_table==0){
+        fprintf(stderr,"no cache: %p,(%ld,%ld) %d\n",current_node->shelter, current_node->exposed_num,current_node->hidden_num,current_node->import_type);
+    }
 
     if(LIKELY(st_lookup(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&entry))){
         if(LIKELY(entry->vm_state == GET_VM_STATE_VERSION())){
