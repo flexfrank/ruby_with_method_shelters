@@ -346,7 +346,7 @@ typedef struct rb_block_struct {
     VALUE *dfp;			/* share with method frame if it's only block */
     rb_iseq_t *iseq;
     VALUE proc;
-    void* shelter_node;
+    shelter_node_t* shelter_node;
 } rb_block_t;
 
 #define GetThreadPtr(obj, ptr) \

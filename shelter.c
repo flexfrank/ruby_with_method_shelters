@@ -396,6 +396,7 @@ define_shelter(VALUE self,VALUE name){
     VALUE val=rb_const_get_at(rb_cShelter,shelterid);
     if(CLASS_OF(val)==rb_cShelter){
       shelter=val;
+      fprintf(stderr,"shelter redefinition\n");
     }else{
       rb_raise(rb_eTypeError, "%s is not a shelter", rb_id2name(shelterid));
     }
@@ -652,7 +653,7 @@ dump_shelter_tree(shelter_node_t* node,int depth){
     case SHELTER_IMPORT_EXPOSED: type="exposed";break;
     case SHELTER_IMPORT_HIDDEN: type="hidden";break;
     }
-    name=rb_sym_to_s(node->shelter->name);
+    name=node->shelter ? rb_sym_to_s(node->shelter->name) :rb_str_new_cstr("<tmp_global>");
     print_indent(depth);
     printf("%s(%s)%p<%p->%p[\n",RSTRING_PTR(name),type,node,node->parent,search_root(node));
     for(i=0;i<node->exposed_num;i++){
@@ -693,11 +694,12 @@ shelter_eval(VALUE self, VALUE shelter_symbol){
 
     //fprintf(stderr,"vm_version:%lx\n",GET_VM_STATE_VERSION());
     Data_Get_Struct(shelter_val,shelter_t, shelter);
-    if(shelter->root_node){
+    if(shelter->root_node && shelter->vm_state==GET_VM_STATE_VERSION()){
         node=shelter->root_node;
     }else{
         node= shelter_tree(shelter);
         shelter->root_node=node;
+        shelter->vm_state=GET_VM_STATE_VERSION();
     }
     //rb_p(rb_sprintf("nodeBefore:%p",node));
     //node_val=Data_Wrap_Struct(rb_cShelterNode,shelter_node_mark, shelter_node_free,node);
@@ -744,7 +746,19 @@ static VALUE
 current_node(VALUE self){
     shelter_node_t* node = cur_node();
     if(node){
-        return node->shelter->name;
+        if(node->shelter){
+            return node->shelter->name;
+        }else{
+            VALUE str=rb_str_new_cstr("<tmp_global_shelter");
+            if(node->parent->shelter){
+                rb_str_cat2(str," ");
+                rb_str_concat(str,rb_sym_to_s(node->parent->shelter->name));
+                rb_str_cat2(str,">");
+            }else{
+                rb_str_cat2(str,">");
+            }
+            return rb_str_intern(str);
+        }
     }else{
         return Qnil;
     }
@@ -905,6 +919,7 @@ shelter_search_method_name_symbol(VALUE klass, VALUE name, shelter_node_t* curre
 
     VALUE conv_name=lookup_in_shelter(klass,name, currentnode,&nnode);
 
+
     if(next_node){*next_node=nnode;}
     return RTEST(conv_name) ? conv_name : name;
 }
@@ -931,6 +946,10 @@ shelter_search_method(ID id, VALUE klass,shelter_node_t* current_node){
     ID conv_id=SYM2ID(shelter_search_method_name_symbol(klass,ID2SYM(id),current_node,&next_node));
     rb_method_entry_t* me=rb_method_entry(klass,conv_id);
 
+    if(id == rb_intern("days_ago")){
+       fprintf(stderr,"conv:%p:%s\n",me,rb_id2name(conv_id));
+       dump_shelter_tree(current_node,0);
+    }
     shelter_cache_key* new_key;
     if(!st_get_key(current_node->method_cache_table,(st_data_t)&key,(st_data_t*)&new_key)){
         new_key=malloc(sizeof(shelter_cache_key));
@@ -954,6 +973,7 @@ shelter_search_method_without_ic(ID id, VALUE klass,shelter_node_t* current_node
 #endif
 
     shelter_cache_entry* result = shelter_search_method(id, klass, current_node);    
+
 
 #if SHELTER_LOG_CACHE_HIT
     shelter_total_cache_hit.cache_hit_count = total_hit;

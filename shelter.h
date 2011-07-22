@@ -23,6 +23,7 @@ typedef struct shelter_struct{
     st_table *exposed_method_table; /*klass->symbol->symbol*/
     st_table *hidden_method_table;  /*klass->symbol->symbol*/
     shelter_node_t* root_node;
+    VALUE vm_state;
 } shelter_t;
 
 struct shelter_node_struct{

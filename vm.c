@@ -499,6 +499,7 @@ rb_vm_make_proc(rb_thread_t *th, const rb_block_t *block, VALUE klass)
     proc->block.lfp = block->lfp;
     proc->block.dfp = block->dfp;
     proc->block.iseq = block->iseq;
+    proc->block.shelter_node=block->shelter_node;
     proc->block.proc = procval;
     proc->envval = envval;
     proc->safe_level = th->safe_level;
@@ -574,7 +575,11 @@ invoke_block_from_c(rb_thread_t *th, const rb_block_t *block,
 		    VALUE self, int argc, const VALUE *argv,
 		    const rb_block_t *blockptr, const NODE *cref)
 {
-    return invoke_block_from_c_with_shelter_node(th,block,self,argc,argv,blockptr,cref,NULL);
+    if(block){
+        return invoke_block_from_c_with_shelter_node(th,block,self,argc,argv,blockptr,cref,block->shelter_node);
+    }else{
+        return invoke_block_from_c_with_shelter_node(th,block,self,argc,argv,blockptr,cref,NULL);
+    }
 }
 
 static inline const rb_block_t *
@@ -989,7 +994,8 @@ shelter_opt_method_unredefined_p(long bop){
     shelter_node_t* node=SHELTER_CURRENT_NODE(); 
     long i;
 
-    return node->opt_redefined_flag[bop]==0 && ruby_vm_redefined_flag[bop]==0;
+    return node->opt_redefined_flag && 
+           node->opt_redefined_flag[bop]==0 && ruby_vm_redefined_flag[bop]==0;
 }
 
 

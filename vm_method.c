@@ -1240,6 +1240,12 @@ static inline int
 basic_obj_respond_to(VALUE obj, ID id, int pub)
 {
     VALUE klass = CLASS_OF(obj);
+    if(SHELTER_CURRENT_NODE()){
+        shelter_cache_entry* sc= shelter_method_entry(klass, id);
+        if(sc && sc->shelter_method_id){
+            id=sc->shelter_method_id;
+        }
+    }
 
     switch (rb_method_boundp(klass, id, pub|NOEX_RESPONDS)) {
       case 2:

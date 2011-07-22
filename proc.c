@@ -552,7 +552,6 @@ proc_call(int argc, VALUE *argv, VALUE procval)
 	    blockptr = &proc->block;
 	}
     }
-
     return rb_vm_invoke_proc(GET_THREAD(), proc, proc->block.self,
 			     argc, argv, blockptr);
 }
