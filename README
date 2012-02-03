@@ -1,3 +1,6 @@
+!! This branch is proof-of-concept implementation of Method Shelters in Ruby.
+See "README-SHELTERS.txt" for more detail.
+
 * What's Ruby
 
 Ruby is the interpreted scripting language for quick and
