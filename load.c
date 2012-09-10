@@ -470,6 +470,24 @@ rb_f_load_p(int argc, VALUE *argv)
     return Qtrue;
 }
 
+static VALUE
+rb_f_load_in(int argc, VALUE *argv)
+{
+    VALUE fname, wrap, path;
+
+    rb_scan_args(argc, argv, "11", &fname, &wrap);
+    path = rb_find_file(FilePathValue(fname));
+    if (!path) {
+	if (!rb_file_load_ok(RSTRING_PTR(fname)))
+	    load_failed(fname);
+	path = fname;
+    }
+    rb_load_internal(path, RTEST(wrap));
+
+    rb_scan_args(argc, argv, "11", &fname, &wrap);
+    return Qtrue;
+}
+
 
 static char *
 load_lock(const char *ftptr)
@@ -857,6 +875,7 @@ Init_load()
 
     rb_define_global_function("load", rb_f_load, -1);
     rb_define_global_function("load_with_shelter", rb_f_load_p, -1);
+    rb_define_global_function("load_in_shelter", rb_f_load_in, -1);
     rb_define_global_function("require", rb_f_require, 1);
     rb_define_global_function("require_relative", rb_f_require_relative, 1);
     rb_define_method(rb_cModule, "autoload", rb_mod_autoload, 2);
