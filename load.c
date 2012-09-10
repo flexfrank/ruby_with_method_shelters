@@ -6,7 +6,6 @@
 #include "ruby/util.h"
 #include "dln.h"
 #include "eval_intern.h"
-
 VALUE ruby_dln_librefs;
 
 #define IS_RBEXT(e) (strcmp(e, ".rb") == 0)
@@ -323,6 +322,69 @@ rb_load_internal(VALUE fname, int wrap)
 	rb_exc_raise(th->errinfo);
     }
 }
+static void
+rb_load_internal_shelter(VALUE fname, int wrap)
+{
+    int state;
+    rb_thread_t *th = GET_THREAD();
+    volatile VALUE wrapper = th->top_wrapper;
+    volatile VALUE self = th->top_self;
+    volatile int loaded = FALSE;
+    volatile int mild_compile_error;
+#ifndef __GNUC__
+    rb_thread_t *volatile th0 = th;
+#endif
+
+    th->errinfo = Qnil; /* ensure */
+
+    if (!wrap) {
+	rb_secure(4);		/* should alter global state */
+	th->top_wrapper = 0;
+    }
+    else {
+	/* load in anonymous module as toplevel */
+	th->top_self = rb_obj_clone(rb_vm_top_self());
+	th->top_wrapper = rb_module_new();
+	rb_extend_object(th->top_self, th->top_wrapper);
+    }
+
+    mild_compile_error = th->mild_compile_error;
+    PUSH_TAG();
+    state = EXEC_TAG();
+    if (state == 0) {
+	NODE *node;
+	VALUE iseq;
+
+	th->mild_compile_error++;
+	node = (NODE *)rb_load_file(RSTRING_PTR(fname));
+	loaded = TRUE;
+	iseq = rb_iseq_new_top(node, rb_str_new2("<top (required)>"), fname, fname, Qfalse);
+	th->mild_compile_error--;
+	rb_iseq_eval_shelter(iseq);
+    }
+    POP_TAG();
+
+#ifndef __GNUC__
+    th = th0;
+    fname = RB_GC_GUARD(fname);
+#endif
+    th->mild_compile_error = mild_compile_error;
+    th->top_self = self;
+    th->top_wrapper = wrapper;
+
+    if (!loaded) {
+	rb_exc_raise(GET_THREAD()->errinfo);
+    }
+    if (state) {
+	rb_vm_jump_tag_but_local_jump(state, Qundef);
+    }
+
+    if (!NIL_P(GET_THREAD()->errinfo)) {
+	/* exception during load */
+	rb_exc_raise(th->errinfo);
+    }
+}
+
 
 void
 rb_load(VALUE fname, int wrap)
@@ -383,6 +445,31 @@ rb_f_load(int argc, VALUE *argv)
     rb_scan_args(argc, argv, "11", &fname, &wrap);
     return Qtrue;
 }
+
+static VALUE
+rb_f_load_p(int argc, VALUE *argv)
+{
+    VALUE fname, wrap, path;
+
+    if(RTEST(GET_THREAD()->shelter_stack)){
+        rb_ary_push(GET_THREAD()->shelter_stack,Qnil);
+    }
+    rb_scan_args(argc, argv, "11", &fname, &wrap);
+    path = rb_find_file(FilePathValue(fname));
+    if (!path) {
+	if (!rb_file_load_ok(RSTRING_PTR(fname)))
+	    load_failed(fname);
+	path = fname;
+    }
+    rb_load_internal_shelter(path, RTEST(wrap));
+
+    if(RTEST(GET_THREAD()->shelter_stack)){
+        rb_ary_pop(GET_THREAD()->shelter_stack);
+    }
+    rb_scan_args(argc, argv, "11", &fname, &wrap);
+    return Qtrue;
+}
+
 
 static char *
 load_lock(const char *ftptr)
@@ -769,6 +856,7 @@ Init_load()
     vm->loaded_features = rb_ary_new();
 
     rb_define_global_function("load", rb_f_load, -1);
+    rb_define_global_function("load_with_shelter", rb_f_load_p, -1);
     rb_define_global_function("require", rb_f_require, 1);
     rb_define_global_function("require_relative", rb_f_require_relative, 1);
     rb_define_method(rb_cModule, "autoload", rb_mod_autoload, 2);

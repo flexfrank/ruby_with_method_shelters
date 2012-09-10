@@ -94,6 +94,26 @@ vm_set_top_stack(rb_thread_t * th, VALUE iseqval)
 
     CHECK_STACK_OVERFLOW(th->cfp, iseq->stack_max);
 }
+static void
+vm_set_top_stack_shelter(rb_thread_t * th, VALUE iseqval)
+{
+    rb_iseq_t *iseq;
+    GetISeqPtr(iseqval, iseq);
+
+    if (iseq->type != ISEQ_TYPE_TOP) {
+	rb_raise(rb_eTypeError, "Not a toplevel InstructionSequence");
+    }
+
+    /* for return */
+    rb_vm_set_finish_env(th);
+
+    vm_push_frame_with_shelter_node(th, iseq, VM_FRAME_MAGIC_TOP,
+		  th->top_self, 0, iseq->iseq_encoded,
+		  th->cfp->sp, 0, iseq->local_size,SHELTER_CURRENT_NODE());
+
+    CHECK_STACK_OVERFLOW(th->cfp, iseq->stack_max);
+}
+
 
 static void
 vm_set_eval_stack(rb_thread_t * th, VALUE iseqval, const NODE *cref)
@@ -1415,6 +1435,20 @@ rb_iseq_eval(VALUE iseqval)
     tmp = iseqval; /* prohibit tail call optimization */
     return val;
 }
+VALUE
+rb_iseq_eval_shelter(VALUE iseqval)
+{
+    rb_thread_t *th = GET_THREAD();
+    VALUE val;
+    volatile VALUE tmp;
+
+    vm_set_top_stack_shelter(th, iseqval);
+
+    val = vm_exec(th);
+    tmp = iseqval; /* prohibit tail call optimization */
+    return val;
+}
+
 
 VALUE
 rb_iseq_eval_main(VALUE iseqval)
